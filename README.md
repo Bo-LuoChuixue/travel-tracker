@@ -15,6 +15,14 @@ curl -fsSL https://raw.githubusercontent.com/Bo-LuoChuixue/travel-tracker/main/d
 
 > 隐私说明：这个仓库里没有任何隐私数据——`.env`（JWT 密钥）、`data/`（数据库：用户、行程、邮箱配置、API Key）都在 `.gitignore` 里，永远不会提交。发件邮箱、飞常准 Key、高德 Key 都是部署后在网站的管理员设置页里填的，只保存在你自己服务器的数据库里。
 
+## 一键卸载（不需要参数，域名自动从 nginx 配置里读）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bo-LuoChuixue/travel-tracker/main/uninstall.sh | sudo bash
+```
+
+卸载会先问你行程数据要保留还是删除（直接回车默认删除）：选保留时，删程序前先把行程数据库和 `.env` 备份到 `/root/travel-tracker-backup-<时间>.tar.gz`，数据不会丢；选删除时连数据一起删掉，不留备份。也可以直接传参数跳过提问：`sudo bash -s -- --keep-data`（保留）或 `sudo bash -s -- --delete-data`（删除）。卸载还会停掉并删掉服务、删掉 nginx 配置和该域名的 HTTPS 证书、删掉 `/opt/travel-tracker`。Node.js、nginx、certbot 不会删（系统软件，其他服务可能在用），防火墙的 80、443 规则也不会动。
+
 ## 技术栈
 
 - 后端：Node.js + Express + SQLite（better-sqlite3）
