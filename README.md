@@ -4,12 +4,11 @@
 
 ## 一键部署（新服务器，一行命令）
 
-仓库是私有的，拉代码需要一个只读 token（细粒度 PAT，只给 `travel-tracker` 这一个仓库的 Contents 读权限；在 GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens 里建）：
+仓库是公开的，不需要 token：
 
 ```bash
-curl -fsSL -H "Authorization: Bearer <你的只读 token>" \
-  https://raw.githubusercontent.com/Bo-LuoChuixue/travel-tracker/main/deploy.sh \
-  | sudo GH_TOKEN=<你的只读 token> bash -s <你的域名>
+curl -fsSL https://raw.githubusercontent.com/Bo-LuoChuixue/travel-tracker/main/deploy.sh \
+  | sudo bash -s <你的域名>
 ```
 
 脚本会自动安装 Node.js 20、nginx、certbot，拉代码、装依赖、生成 `.env`（随机 JWT_SECRET）、起 systemd 服务、配 nginx、申请 HTTPS 证书。部署前请先做好两件事：域名的 A 记录指向这台服务器；防火墙放行 80 和 443 端口。部署完成后打开 `https://<你的域名>/`，第一个注册的用户自动成为管理员（无需验证码），再去「⚙️ 设置」里填发件邮箱和授权码。
