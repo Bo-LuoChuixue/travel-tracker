@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>我的轨迹 — 记录飞行与火车出行</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg-orbs" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+</div>
+
+<!-- ============ 登录 / 注册 ============ -->
+<section id="auth-view" class="view">
+  <div class="glass auth-card">
+    <div class="auth-logo">✈️</div>
+    <h1 class="app-title">我的轨迹</h1>
+    <p class="app-subtitle">记录每一次飞行与火车出行</p>
+
+    <div class="tabs" role="tablist">
+      <button id="tab-login" class="tab active" type="button">登录</button>
+      <button id="tab-register" class="tab" type="button">注册</button>
+    </div>
+
+    <!-- 登录 -->
+    <form id="login-form" class="auth-form">
+      <label class="field"><span>邮箱</span>
+        <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+      </label>
+      <label class="field"><span>密码</span>
+        <input type="password" id="login-password" required placeholder="请输入密码" autocomplete="current-password">
+      </label>
+      <p class="form-error" id="login-error"></p>
+      <button class="btn btn-primary" type="submit">登录</button>
+      <button class="link-btn" type="button" id="show-forgot">忘记密码？</button>
+    </form>
+
+    <!-- 注册 -->
+    <form id="register-form" class="auth-form hidden">
+      <label class="field"><span>昵称</span>
+        <input type="text" id="reg-name" placeholder="怎么称呼你（仅限中英文，最多 12 个字符，汉字算 2 个）" autocomplete="nickname">
+      </label>
+      <label class="field"><span>邮箱</span>
+        <input type="email" id="reg-email" required placeholder="you@example.com" autocomplete="email">
+      </label>
+      <label class="field"><span>密码</span>
+        <input type="password" id="reg-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
+      </label>
+      <p class="form-error" id="reg-error"></p>
+      <button class="btn btn-primary" type="submit">发送验证码</button>
+    </form>
+
+    <!-- 注册验证码 -->
+    <form id="verify-form" class="auth-form hidden">
+      <p class="verify-hint">验证码已发送到 <strong id="verify-email-text"></strong>，15 分钟内有效。</p>
+      <label class="field"><span>验证码</span>
+        <input type="text" id="verify-code" required inputmode="numeric" maxlength="6" placeholder="6 位数字验证码" autocomplete="one-time-code">
+      </label>
+      <p class="form-error" id="verify-error"></p>
+      <button class="btn btn-primary" type="submit">验证并完成注册</button>
+      <button class="link-btn" type="button" id="back-to-register">返回修改邮箱</button>
+    </form>
+
+    <!-- 忘记密码 -->
+    <form id="forgot-form" class="auth-form hidden">
+      <label class="field"><span>邮箱</span>
+        <input type="email" id="forgot-email" required placeholder="注册时用的邮箱" autocomplete="email">
+      </label>
+      <p class="form-error" id="forgot-error"></p>
+      <button class="btn btn-primary" type="submit">发送重置验证码</button>
+      <button class="link-btn" type="button" id="back-to-login">返回登录</button>
+    </form>
+
+    <!-- 重置密码 -->
+    <form id="reset-form" class="auth-form hidden">
+      <p class="verify-hint">重置验证码已发送到 <strong id="reset-email-text"></strong>，15 分钟内有效。</p>
+      <label class="field"><span>验证码</span>
+        <input type="text" id="reset-code" required inputmode="numeric" maxlength="6" placeholder="6 位数字验证码" autocomplete="one-time-code">
+      </label>
+      <label class="field"><span>新密码</span>
+        <input type="password" id="reset-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
+      </label>
+      <p class="form-error" id="reset-error"></p>
+      <button class="btn btn-primary" type="submit">重置密码</button>
+      <button class="link-btn" type="button" id="back-to-login-2">返回登录</button>
+    </form>
+  </div>
+</section>
+
+<!-- ============ 主界面：全屏地图 + 底部 Dock ============ -->
+<section id="main-view" class="view hidden">
+  <div id="map"></div>
+  <div id="map-hint" class="map-hint-chip glass">还没有行程，点击下方「添加」记录第一条轨迹。</div>
+
+  <!-- 添加行程面板 -->
+  <div id="panel-add" class="panel glass hidden">
+    <div class="panel-head">
+      <h2>添加行程</h2>
+      <button class="panel-close" type="button" data-close="panel-add" aria-label="关闭">✕</button>
+    </div>
+    <div class="type-toggle" role="tablist">
+      <button id="type-flight" class="type-btn active" type="button">✈️ 飞行</button>
+      <button id="type-train" class="type-btn" type="button">🚄 火车</button>
+    </div>
+    <form id="trip-form">
+      <!-- 航班号（仅飞行） -->
+      <label class="field field-flight-only"><span>航班号</span>
+        <input type="text" id="f-flight-number" placeholder="例如 CA1831" autocomplete="off">
+      </label>
+      <!-- 车次（仅火车） -->
+      <label class="field field-train-only hidden"><span>车次</span>
+        <input type="text" id="f-train-number" placeholder="例如 G101" autocomplete="off">
+      </label>
+      <!-- 出发时间（共用） -->
+      <label class="field"><span>出发时间</span>
+        <input type="datetime-local" id="f-dep-time" required>
+      </label>
+      <!-- 查航班（仅飞行） -->
+      <button class="btn btn-ghost field-flight-only" type="button" id="flight-lookup-btn">🔍 查航班（按航班号和出发日期自动填起降机场）</button>
+      <!-- 到达时间（共用） -->
+      <label class="field"><span>到达时间</span>
+        <input type="datetime-local" id="f-arr-time">
+      </label>
+      <!-- 出发地（共用） -->
+      <label class="field"><span id="dep-label">出发机场</span>
+        <input type="text" id="f-dep" required placeholder="输入出发机场" autocomplete="off">
+      </label>
+      <!-- 目的地（共用） -->
+      <label class="field"><span id="arr-label">到达机场</span>
+        <input type="text" id="f-arr" required placeholder="输入到达机场" autocomplete="off">
+      </label>
+      <!-- 航空公司（仅飞行） -->
+      <label class="field field-flight-only"><span>航空公司</span>
+        <span class="airline-row">
+          <input type="text" id="f-airline" placeholder="例如 中国国际航空" autocomplete="off">
+          <img id="airline-logo" class="airline-logo hidden" alt="" referrerpolicy="no-referrer">
+        </span>
+      </label>
+      <!-- 机型（仅飞行） -->
+      <label class="field field-flight-only"><span>机型</span>
+        <input type="text" id="f-aircraft" placeholder="例如 波音 737-800 / 空客 A320" autocomplete="off">
+      </label>
+      <!-- 座位号（共用） -->
+      <label class="field"><span>座位号</span>
+        <input type="text" id="f-seat" placeholder="例如 12A / 05车 08A" autocomplete="off">
+      </label>
+      <!-- 备注（共用） -->
+      <label class="field"><span>备注</span>
+        <input type="text" id="f-notes" placeholder="写点什么吧">
+      </label>
+      <p class="form-error" id="trip-error"></p>
+      <button class="btn btn-primary" type="submit" id="trip-submit">保存行程</button>
+      <button class="link-btn hidden" type="button" id="trip-cancel">取消编辑</button>
+    </form>
+  </div>
+
+  <!-- 行程列表面板 -->
+  <div id="panel-list" class="panel glass hidden">
+    <div class="panel-head">
+      <h2>行程列表</h2>
+      <button class="panel-close" type="button" data-close="panel-list" aria-label="关闭">✕</button>
+    </div>
+    <div class="type-toggle" role="tablist">
+      <button id="list-filter-all" class="type-btn active" type="button">全部</button>
+      <button id="list-filter-flight" class="type-btn" type="button">✈️ 飞行</button>
+      <button id="list-filter-train" class="type-btn" type="button">🚄 火车</button>
+    </div>
+    <div id="trip-list"></div>
+  </div>
+
+  <!-- 统计面板 -->
+  <div id="panel-stats" class="panel glass hidden">
+    <div class="panel-head">
+      <h2>统计</h2>
+      <button class="panel-close" type="button" data-close="panel-stats" aria-label="关闭">✕</button>
+    </div>
+    <div class="type-toggle" role="tablist">
+      <button class="type-btn active" type="button" id="stats-type-flight">✈️ 飞行</button>
+      <button class="type-btn" type="button" id="stats-type-train">🚄 火车</button>
+    </div>
+    <div id="stats-flight" class="stats-group">
+      <div class="stats-row">
+        <div class="stat"><span class="stat-num" id="stat-flights">0</span><span class="stat-label">乘机次数</span></div>
+        <div class="stat"><span class="stat-num stat-num-sm" id="stat-flight-time">0分钟</span><span class="stat-label">乘机时长</span></div>
+      </div>
+      <h3 class="stats-group-title">🏆 去过的机场 Top 10</h3>
+      <ol id="airport-rank" class="rank-list"></ol>
+    </div>
+    <div id="stats-train" class="stats-group hidden">
+      <div class="stats-row">
+        <div class="stat"><span class="stat-num" id="stat-trains">0</span><span class="stat-label">乘车次数</span></div>
+        <div class="stat"><span class="stat-num stat-num-sm" id="stat-train-time">0分钟</span><span class="stat-label">乘车时长</span></div>
+      </div>
+      <h3 class="stats-group-title">🏆 去过的车站 Top 10</h3>
+      <ol id="station-rank" class="rank-list"></ol>
+    </div>
+  </div>
+
+  <!-- 管理员：邮件设置面板 -->
+  <section id="settings-card" class="panel glass hidden">
+    <div class="panel-head">
+      <h2>⚙️ 设置</h2>
+      <button class="panel-close" type="button" data-close="settings-card" aria-label="关闭">✕</button>
+    </div>
+    <!-- 账号（所有登录用户可见） -->
+    <div class="settings-account">
+      <p class="settings-user">当前账号：<strong id="settings-user-name"></strong></p>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" type="button" id="switch-user-btn">切换用户</button>
+        <button class="btn btn-ghost" type="button" id="logout-btn">退出登录</button>
+      </div>
+    </div>
+    <!-- 外观（所有登录用户可见） -->
+    <div class="settings-appearance">
+      <h3>外观</h3>
+      <label class="field"><span>地图源</span>
+        <select id="map-source">
+          <option value="amap">高德地图</option>
+          <option value="osm">OpenStreetMap</option>
+        </select>
+      </label>
+      <label class="check-field"><span>显示地名</span>
+        <input type="checkbox" id="show-labels" checked>
+      </label>
+      <label class="field"><span>液态玻璃透明度 <span class="slider-val" id="glass-opacity-val"></span></span>
+        <span class="slider-row">
+          <input type="range" id="glass-opacity" min="0" max="100" step="1" value="12">
+        </span>
+      </label>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" type="button" id="theme-toggle"><span id="theme-ico">🌙</span> <span id="theme-label">深色模式</span></button>
+      </div>
+    </div>
+    <!-- 管理员设置（仅管理员可见） -->
+    <div id="admin-settings">
+    <p class="settings-desc">设置用于发送注册验证码的邮箱。授权码请在邮箱的设置里获取（163 邮箱：设置 → POP3/SMTP/IMAP → 开启 IMAP/SMTP 服务并获取授权码），<strong>不是邮箱登录密码</strong>。保存后新用户注册就能收到验证码了。</p>
+    <form id="settings-form">
+      <label class="field"><span>SMTP 服务器</span>
+        <input type="text" id="s-smtp-host" placeholder="例如 smtp.163.com" autocomplete="off">
+      </label>
+      <div class="form-row">
+        <label class="field"><span>端口</span>
+          <input type="number" id="s-smtp-port" placeholder="465（SSL）或 587">
+        </label>
+        <label class="field"><span>发件邮箱</span>
+          <input type="email" id="s-smtp-user" placeholder="例如 you@163.com" autocomplete="off">
+        </label>
+      </div>
+      <label class="field"><span>授权码</span>
+        <input type="password" id="s-smtp-pass" placeholder="已设置时留空表示不修改" autocomplete="off">
+      </label>
+      <label class="field"><span>发件人（可选，默认同发件邮箱）</span>
+        <input type="text" id="s-smtp-from" placeholder="例如 you@163.com" autocomplete="off">
+      </label>
+      <label class="field"><span>航班查询 API Key（可选）</span>
+        <input type="password" id="s-flight-api-key" placeholder="飞常准 CMCP Key，已设置时留空表示不修改" autocomplete="off">
+      </label>
+      <p class="settings-desc">航班自动查询用飞常准 CMCP（cmcp.variflight.com）：在飞常准 CMCP 控制台创建一个 API Key 填在这里，填航班号点「查航班」就能自动填起降机场和时间。不填也能手动录入。</p>
+      <label class="field"><span>高德 API Key（可选，用于查不在内置库里的地名）</span>
+        <input type="password" id="s-amap-api-key" placeholder="高德 Web 服务 Key，已设置时留空表示不修改" autocomplete="off">
+      </label>
+      <p class="settings-desc">输入的地名（机场/车站）不在内置库里时，用高德地理编码查真实坐标，这样地图上才能画线。到 <a href="https://lbs.amap.com/" target="_blank" rel="noopener">lbs.amap.com</a> 免费注册应用后把 Web 服务 Key 填在这里（个人每天 30 万次）。不填时只有内置库里的 59 个机场和 52 个车站能画线。</p>
+      <p class="form-error" id="settings-error"></p>
+      <p class="form-ok" id="settings-ok"></p>
+      <div class="settings-actions">
+        <button class="btn btn-primary" type="submit">保存设置</button>
+        <button class="btn btn-ghost" type="button" id="test-email-btn">发送测试邮件</button>
+      </div>
+    </form>
+    </div><!-- /#admin-settings -->
+  </section>
+
+  <!-- 底部 Dock -->
+  <nav class="dock glass" aria-label="主导航">
+    <button class="dock-btn" type="button" data-panel="panel-add"><span class="dock-ico">➕</span><span>添加</span></button>
+    <button class="dock-btn" type="button" data-panel="panel-list"><span class="dock-ico">📋</span><span>行程</span></button>
+    <button class="dock-btn" type="button" data-panel="panel-stats"><span class="dock-ico">📊</span><span>统计</span></button>
+    <button id="settings-btn" class="dock-btn" type="button" data-panel="settings-card"><span class="dock-ico">⚙️</span><span>设置</span></button>
+  </nav>
+</section>
+
+<!-- 航班多段选择弹窗：同一航班号一日内有多段时，让用户选一段 -->
+  <div id="flight-modal" class="modal-overlay hidden">
+    <div class="modal glass">
+      <div class="panel-head">
+        <h2 id="flight-modal-title">选择航段</h2>
+        <button class="panel-close" type="button" id="flight-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <p class="modal-hint" id="flight-modal-hint"></p>
+      <div id="flight-options"></div>
+    </div>
+  </div>
+
+<!-- 航司 logo 修改弹窗：点行程里或表单里的小 logo 打开；留空保存 = 恢复自动匹配 -->
+  <div id="logo-modal" class="modal-overlay hidden">
+    <div class="modal glass">
+      <div class="panel-head">
+        <h2 id="logo-modal-title">修改航司 logo</h2>
+        <button class="panel-close" type="button" id="logo-modal-close" aria-label="关闭">✕</button>
+      </div>
+      <p class="modal-hint" id="logo-modal-hint"></p>
+      <label class="field-label" for="logo-url">Logo 图片地址</label>
+      <input id="logo-url" class="field-input" type="url" placeholder="https://…/logo.png（留空 = 恢复自动匹配）" autocomplete="off">
+      <label class="field-label" for="logo-file">或从本地上传图片</label>
+      <input id="logo-file" class="field-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/bmp,image/x-icon,.png,.jpg,.jpeg,.gif,.webp,.svg,.bmp,.ico">
+      <p class="modal-hint">支持 PNG、JPG、GIF、WebP、SVG、BMP、ICO 等常见图片格式；上传后会自动缩小到 128px 以内再保存。</p>
+      <div class="logo-modal-preview"><img id="logo-preview" class="airline-logo" alt="" referrerpolicy="no-referrer"></div>
+      <p class="modal-hint" id="logo-modal-error"></p>
+      <div class="logo-modal-actions">
+        <button class="btn primary" type="button" id="logo-save">保存</button>
+        <button class="btn" type="button" id="logo-clear">恢复自动匹配</button>
+      </div>
+    </div>
+  </div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
