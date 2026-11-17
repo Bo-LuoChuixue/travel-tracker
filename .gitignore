@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+
+# 隐私：运行数据与密钥，绝不进仓库
+.env
+data/
+*.log
+*.db
+*.db-shm
+*.db-wal
+
+# 系统文件
+.DS_Store
+Thumbs.db

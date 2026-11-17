@@ -1,0 +1,1 @@
+{"dependencies":{"bcryptjs":"^2.4.3","better-sqlite3":"^12.4.1","dotenv":"^16.4.5","express":"^4.21.2","jsonwebtoken":"^9.0.2","nodemailer":"^6.9.16"},"description":"记录飞行航线和火车出行轨迹的网站（Node.js + Express + SQLite）","license":"MIT","main":"server.js","name":"travel-tracker","scripts":{"start":"node server.js"},"version":"1.0.0"}
