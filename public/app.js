@@ -459,6 +459,11 @@
   }
   // 地名标签防重叠：每条路线的两个端点标签都记在这里，画完后统一检测重叠、挪位置
   let labelMarkers = [];
+  // 地名标签按缩放分级显示（2026-11-22 在电脑 Chrome 上实测后定）：
+  // 火车站离得近：6 级能看清、有间隙，5 级（全国）就几乎贴上 → 6 级以下藏；
+  // 机场离得远：5 级（全国）还分得清，4 级（亚洲）合肥/上海才靠得很近 → 5 级以下藏。
+  // 缩得太远时只显示轨迹线，不显示地名。
+  const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
@@ -486,7 +491,7 @@
       // 标签上不显示机场代码：手动填的“全称 (CODE)”、以及历史遗留的带代码名字
       // （如“合肥新桥国际机场 (HFE)”）在显示时都去掉末尾的“ (CODE)”，只留全称。
       const labelName = (name) => String(name || '').replace(/\s*\([A-Za-z0-9]{2,4}\)\s*$/, '');
-      const labelMarker = (latlon, name) => {
+      const labelMarker = (latlon, name, type) => {
         const key = latlon.join(',');
         if (seenEndpoints.has(key)) return;
         seenEndpoints.add(key);
@@ -497,11 +502,12 @@
           .bindTooltip(name, { permanent: true, direction: 'bottom', offset: [0, 8], className: 'place-label-tip' })
           .addTo(routeLayer);
         m._labelPlace = 'bottom:0,8';
+        m._labelType = type;
         labelMarkers.push(m);
         return m;
       };
-      labelMarker(a, labelName(t.dep_name));
-      labelMarker(b, labelName(t.arr_name));
+      labelMarker(a, labelName(t.dep_name), t.type);
+      labelMarker(b, labelName(t.arr_name), t.type);
       bounds.push(a, b);
     });
     const flightCount = trips.filter((t) => t.type === 'flight').length;
@@ -529,11 +535,17 @@
     const placed = [];
     const GAP = 4;
     const overlaps = (r) => placed.some((p) => r.left < p.right + GAP && r.right > p.left - GAP && r.top < p.bottom + GAP && r.bottom > p.top - GAP);
+    const zoom = map.getZoom();
     for (const marker of labelMarkers) {
       const tip = marker.getTooltip && marker.getTooltip();
       if (!tip) continue;
       const el = tip.getElement();
       if (!el) continue;
+      // 按类型分级显示：缩得太远时藏起地名、只留轨迹线（火车站 6 级以下藏，机场 5 级以下藏）；
+      // 藏起来的标签不参与防重叠计算，不占位置
+      const minZoom = LABEL_MIN_ZOOM[marker._labelType] ?? LABEL_MIN_ZOOM.flight;
+      if (zoom < minZoom) { el.style.display = 'none'; continue; }
+      el.style.display = '';
       const pt = map.latLngToContainerPoint(marker.getLatLng());
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
