@@ -331,6 +331,9 @@
     map.on('click', () => {
       showPanel(null);
     });
+    // 缩放 / 尺寸变化会改变标签重叠情况，重算防重叠（平移不改变相对位置，moveend 里一起覆盖）
+    map.on('moveend', () => requestAnimationFrame(deoverlapLabels));
+    map.on('resize', () => requestAnimationFrame(deoverlapLabels));
   }
   // 切换地图源：拆掉旧底图/标注，换上新源的底图（默认第一张），重建图层切换器
   function applyMapSource(source) {
@@ -407,9 +410,12 @@
     }
     return pts;
   }
+  // 地名标签防重叠：每条路线的两个端点标签都记在这里，画完后统一检测重叠、挪位置
+  let labelMarkers = [];
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
+    labelMarkers = [];
     const bounds = [];
     // 同一对地点 + 同类型 的多条线路：按出现顺序依次增大弧度，避免完全重叠
     const routeCount = new Map();
@@ -431,13 +437,17 @@
       // 标签上不显示机场代码：手动填的“全称 (CODE)”、以及历史遗留的带代码名字
       // （如“合肥新桥国际机场 (HFE)”）在显示时都去掉末尾的“ (CODE)”，只留全称。
       const labelName = (name) => String(name || '').replace(/\s*\([A-Za-z0-9]{2,4}\)\s*$/, '');
-      const labelMarker = (latlon, name) =>
-        L.marker(latlon, {
+      const labelMarker = (latlon, name) => {
+        const m = L.marker(latlon, {
           icon: L.divIcon({ className: 'place-label-marker', html: '', iconSize: [0, 0] }),
           interactive: false,
         })
           .bindTooltip(name, { permanent: true, direction: 'bottom', offset: [0, 8], className: 'place-label-tip' })
           .addTo(routeLayer);
+        m._labelPlace = 'bottom:0,8';
+        labelMarkers.push(m);
+        return m;
+      };
       labelMarker(a, labelName(t.dep_name));
       labelMarker(b, labelName(t.arr_name));
       bounds.push(a, b);
@@ -452,6 +462,62 @@
         ? '还没有行程，点击下方「添加行程」记录第一条轨迹。'
         : `已加载 ${flightCount} 条航线<span class="legend-line" style="background:${cols.flight}"></span>，${trainCount} 条铁路线<span class="legend-line" style="background:${cols.train}"></span>。`;
     if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+    requestAnimationFrame(deoverlapLabels);
+  }
+
+  // ---------- 地名标签防重叠 ----------
+  // 标签默认放在端点正下方；两个端点靠得近时 pill 会叠在一起（如都江堰站和青城山）。
+  // 画完后检测重叠：按顺序保留先画的标签，后面的依次尝试上 / 左 / 右 / 斜角 / 远处等空位，
+  // 放到第一个不重叠、且在地图框内的位置；实在没空位就保持默认正下方。
+  // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend（缩放结束也会触发）
+  // 和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
+  function deoverlapLabels() {
+    if (!map || !labelMarkers.length) return;
+    const box = map.getContainer().getBoundingClientRect();
+    const placed = [];
+    const GAP = 4;
+    const overlaps = (r) => placed.some((p) => r.left < p.right + GAP && r.right > p.left - GAP && r.top < p.bottom + GAP && r.bottom > p.top - GAP);
+    for (const marker of labelMarkers) {
+      const tip = marker.getTooltip && marker.getTooltip();
+      if (!tip) continue;
+      const el = tip.getElement();
+      if (!el) continue;
+      const pt = map.latLngToContainerPoint(marker.getLatLng());
+      const w = el.offsetWidth, h = el.offsetHeight;
+      if (!w || !h) continue;
+      // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
+      const candidates = [
+        ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
+        ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
+        ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
+        ['bottom', 0, h + 12], ['top', 0, -h - 12],
+        ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
+      ];
+      let chosen = null;
+      for (const [dir, dx, dy] of candidates) {
+        let left, top;
+        if (dir === 'bottom') { left = pt.x - w / 2 + dx; top = pt.y + dy; }
+        else if (dir === 'top') { left = pt.x - w / 2 + dx; top = pt.y + dy - h; }
+        else if (dir === 'right') { left = pt.x + dx; top = pt.y - h / 2 + dy; }
+        else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
+        const r = { left, top, right: left + w, bottom: top + h };
+        const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
+        if (inside && !overlaps(r)) { chosen = { dir, dx, dy, rect: r }; break; }
+      }
+      if (!chosen) {
+        // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
+        const cr = el.getBoundingClientRect();
+        placed.push({ left: cr.left - box.left, top: cr.top - box.top, right: cr.right - box.left, bottom: cr.bottom - box.top });
+        continue;
+      }
+      placed.push(chosen.rect);
+      const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
+      if (marker._labelPlace === placeKey) continue;
+      marker._labelPlace = placeKey;
+      const name = tip.getContent();
+      marker.unbindTooltip();
+      marker.bindTooltip(name, { permanent: true, direction: chosen.dir, offset: [chosen.dx, chosen.dy], className: 'place-label-tip' });
+    }
   }
 
   // ---------- 行程列表 ----------
@@ -618,6 +684,7 @@
     if (depT) $('f-dep-time').value = depT;
     if (arrT) $('f-arr-time').value = arrT;
     if (opt.airline) $('f-airline').value = opt.airline;
+    if (opt.aircraft) $('f-aircraft').value = opt.aircraft;
     updateAirlineLogo();
     validateTimes();
     const missing = [];
@@ -644,7 +711,8 @@
       b.innerHTML =
         `<div class="opt-route">${opt.departure.iata} → ${opt.arrival.iata}</div>` +
         `<div class="opt-time">${opt.departure.airport} ${depT} → ${opt.arrival.airport} ${arrT}</div>` +
-        (opt.airline ? `<div class="opt-airline">${opt.airline}</div>` : '');
+        (opt.airline ? `<div class="opt-airline">${opt.airline}</div>` : '') +
+        (opt.aircraft ? `<div class="opt-airline">机型 ${opt.aircraft}</div>` : '');
       b.addEventListener('click', () => {
         closeFlightModal();
         fillFlightOption(opt, cached);
@@ -728,8 +796,11 @@
     if (!name) return { name: '', code: '', lat: null, lon: null };
     // 去掉末尾的“ (CODE)”再去地理编码（“合肥新桥 (HFE)”→“合肥新桥”），否则高德查不到
     const geoName = name.replace(/\s*\([A-Z]{3}\)\s*$/, '');
+    // 火车行程：站名后没带“站”时，搜索时自动补上（“青城山”→搜“青城山站”），
+    // 否则高德会返回风景区/镇子而不是火车站；存库的名字仍按用户填的原样，不改。
+    const queryName = tripType === 'train' && !/站$/.test(geoName) ? geoName + '站' : geoName;
     try {
-      const r = await fetch('/api/places/geocode?name=' + encodeURIComponent(geoName), { headers: authHeaders() });
+      const r = await fetch('/api/places/geocode?name=' + encodeURIComponent(queryName), { headers: authHeaders() });
       const d = await r.json();
       // 高德地理编码返回的是 GCJ-02，存库前转回 WGS-84（库里统一存 WGS-84）
       if (d.ok) {
@@ -938,6 +1009,37 @@
   $('f-dep-time').addEventListener('change', validateTimes);
   $('f-arr-time').addEventListener('change', validateTimes);
 
+  // 行程去重（与服务端同一规则）：同一类型、同一起降地（地名去末尾“站/机场”再比），
+  // 双方都有班次号时同一天 + 同一班次号，至少一方无班次号时同一出发时刻；编辑时排除自身。
+  function dupKey(t) {
+    const normName = (s) => String(s || '').trim().replace(/(站|机场)$/, '');
+    const num = t.type === 'flight'
+      ? String(t.flight_number || '').trim().toUpperCase()
+      : String(t.train_number || '').trim().toUpperCase();
+    return {
+      type: t.type,
+      num,
+      date: String(t.dep_time || '').slice(0, 10),
+      dep: normName(t.dep_name),
+      arr: normName(t.arr_name),
+      depTime: String(t.dep_time || ''),
+    };
+  }
+  function isDuplicateTrip(a, b) {
+    if (a.type !== b.type || a.dep !== b.dep || a.arr !== b.arr) return false;
+    if (a.num && b.num) return a.num === b.num && a.date === b.date;
+    return a.depTime !== '' && a.depTime === b.depTime;
+  }
+  function findDuplicateTripLocal(fields, excludeId) {
+    const key = dupKey(fields);
+    return trips.find((r) => r.id !== excludeId && isDuplicateTrip(key, dupKey(r))) || null;
+  }
+  function dupLabel(t) {
+    const num = t.type === 'flight' ? t.flight_number : t.train_number;
+    const date = String(t.dep_time || '').slice(0, 10);
+    return `${num ? num + ' ' : ''}${t.dep_name} → ${t.arr_name}（${date}）`;
+  }
+
   $('trip-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     $('trip-error').textContent = '';
@@ -972,6 +1074,11 @@
       arr_time: $('f-arr-time').value || '',
       notes: $('f-notes').value.trim(),
     };
+    const dup = findDuplicateTripLocal(body, editingId);
+    if (dup) {
+      $('trip-error').textContent = `已有相同行程：${dupLabel(dup)}，请勿重复添加`;
+      return;
+    }
     let res;
     if (editingId) {
       res = await fetch('/api/trips/' + editingId, {
