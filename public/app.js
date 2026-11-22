@@ -387,6 +387,23 @@
     // 换了地图源，坐标系也可能变了（高德 GCJ-02 / OSM WGS-84），按新坐标系重画路线，不动当前视野
     drawRoutes(false);
   }
+  // ---------- 设置二级入口 ----------
+  // 一级是入口列表（账号 / 外观 / 地图设置 / 注册设置），点进某一项再看内容，左上角返回一级
+  const SETTINGS_SECTIONS = ['account', 'appearance', 'map', 'register'];
+  function showSettingsMenu() {
+    $('settings-menu').classList.remove('hidden');
+    SETTINGS_SECTIONS.forEach((n) => $('settings-section-' + n).classList.add('hidden'));
+  }
+  function showSettingsSection(name) {
+    $('settings-menu').classList.add('hidden');
+    SETTINGS_SECTIONS.forEach((n) => $('settings-section-' + n).classList.toggle('hidden', n !== name));
+  }
+  document.querySelectorAll('.settings-menu-item[data-section]').forEach((btn) => {
+    btn.addEventListener('click', () => showSettingsSection(btn.dataset.section));
+  });
+  document.querySelectorAll('.settings-back[data-back]').forEach((btn) => {
+    btn.addEventListener('click', showSettingsMenu);
+  });
   // ---------- 面板与 Dock ----------
   const PANELS = ['panel-add', 'panel-list', 'panel-stats', 'settings-card'];
   function showPanel(id) {
@@ -396,7 +413,7 @@
       $(id).classList.remove('hidden');
       const btn = document.querySelector(`.dock-btn[data-panel="${id}"]`);
       if (btn) btn.classList.add('active');
-      if (id === 'settings-card') loadSettings();
+      if (id === 'settings-card') { showSettingsMenu(); loadSettings(); }
       if (map) setTimeout(() => map.invalidateSize(), 50);
     }
   }
@@ -1327,8 +1344,13 @@
     }
     currentUser = data.user;
     $('settings-user-name').textContent = currentUser.name || currentUser.email;
-    // 管理员设置区仅管理员可见；设置入口对所有登录用户开放
-    $('admin-settings').classList.toggle('hidden', !currentUser.is_admin);
+    // 管理员专属仅管理员可见：注册设置入口及二级页、一级入口的航班查询 Key、地图设置里的高德 Key
+    // 设置入口本身对所有登录用户开放
+    const isAdmin = currentUser.is_admin;
+    $('menu-register').classList.toggle('hidden', !isAdmin);
+    $('settings-section-register').classList.toggle('hidden', !isAdmin);
+    $('settings-flight').classList.toggle('hidden', !isAdmin);
+    $('settings-amap').classList.toggle('hidden', !isAdmin);
     showView('main');
     initMap();
     await loadData();
@@ -1360,6 +1382,8 @@
       : '尚未配置发件邮箱，注册验证码暂时无法发送（会打印到服务器日志）。';
   }
 
+  // 注册设置只保存 SMTP 相关字段；航班 Key 与高德 Key 各自在自己的入口单独保存
+  // （后端只更新请求里带的字段，留空的 Key 不覆盖已保存的值）
   $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     $('settings-error').textContent = '';
@@ -1370,8 +1394,6 @@
       smtp_user: $('s-smtp-user').value.trim(),
       smtp_pass: $('s-smtp-pass').value,
       smtp_from: $('s-smtp-from').value.trim(),
-      flight_api_key: $('s-flight-api-key').value.trim(),
-      amap_api_key: $('s-amap-api-key').value.trim(),
     };
     const res = await fetch('/api/admin/settings', {
       method: 'POST',
@@ -1384,10 +1406,48 @@
       return;
     }
     $('s-smtp-pass').value = '';
-    $('s-flight-api-key').value = '';
-    $('s-amap-api-key').value = '';
     $('settings-ok').textContent = (data.message || '已保存') + (data.mail_configured ? '，发件邮箱已配置。' : '，但发件邮箱尚未完整配置。');
     toast('设置已保存');
+  });
+
+  // 高德 Key（地图设置里单独保存）
+  $('save-amap-key-btn').addEventListener('click', async () => {
+    $('amap-error').textContent = '';
+    $('amap-ok').textContent = '';
+    const res = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ amap_api_key: $('s-amap-api-key').value.trim() }),
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: '服务器返回异常' }));
+    if (!data.ok) {
+      $('amap-error').textContent = data.error || '保存失败';
+      return;
+    }
+    $('s-amap-api-key').value = '';
+    $('s-amap-api-key').placeholder = '已设置（留空不修改）';
+    $('amap-ok').textContent = data.message || '已保存';
+    toast('高德 Key 已保存');
+  });
+
+  // 航班查询 Key（一级入口单独保存）
+  $('save-flight-key-btn').addEventListener('click', async () => {
+    $('flight-error').textContent = '';
+    $('flight-ok').textContent = '';
+    const res = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ flight_api_key: $('s-flight-api-key').value.trim() }),
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: '服务器返回异常' }));
+    if (!data.ok) {
+      $('flight-error').textContent = data.error || '保存失败';
+      return;
+    }
+    $('s-flight-api-key').value = '';
+    $('s-flight-api-key').placeholder = '已设置（留空不修改）';
+    $('flight-ok').textContent = data.message || '已保存';
+    toast('航班查询 Key 已保存');
   });
 
   $('test-email-btn').addEventListener('click', async () => {

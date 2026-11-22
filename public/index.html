@@ -210,23 +210,58 @@
     </div>
   </div>
 
-  <!-- 管理员：邮件设置面板 -->
+  <!-- 设置：二级入口（点开设置先看到入口列表，点进某一项再看内容） -->
   <section id="settings-card" class="panel glass hidden">
     <div class="panel-head">
       <h2>⚙️ 设置</h2>
       <button class="panel-close" type="button" data-close="settings-card" aria-label="关闭">✕</button>
     </div>
-    <!-- 账号（所有登录用户可见） -->
-    <div class="settings-account">
+    <!-- 一级入口 -->
+    <div id="settings-menu">
+      <button class="settings-menu-item" type="button" data-section="account"><span>👤 账号</span><span class="settings-menu-chevron">›</span></button>
+      <button class="settings-menu-item" type="button" data-section="appearance"><span>🎨 外观</span><span class="settings-menu-chevron">›</span></button>
+      <button class="settings-menu-item" type="button" data-section="map"><span>🗺️ 地图设置</span><span class="settings-menu-chevron">›</span></button>
+      <button class="settings-menu-item" type="button" data-section="register" id="menu-register"><span>✉️ 注册设置</span><span class="settings-menu-chevron">›</span></button>
+      <!-- 航班查询 Key 留在一级入口（仅管理员可见），不动 -->
+      <div id="settings-flight" class="settings-flight">
+        <label class="field"><span>航班查询 API Key（可选）</span>
+          <input type="password" id="s-flight-api-key" placeholder="飞常准 CMCP Key，已设置时留空表示不修改" autocomplete="off">
+        </label>
+        <p class="settings-desc">航班自动查询用飞常准 CMCP（cmcp.variflight.com）：在飞常准 CMCP 控制台创建一个 API Key 填在这里，填航班号点「查航班」就能自动填起降机场和时间。不填也能手动录入。</p>
+        <p class="form-error" id="flight-error"></p>
+        <p class="form-ok" id="flight-ok"></p>
+        <div class="settings-actions">
+          <button class="btn btn-primary" type="button" id="save-flight-key-btn">保存</button>
+        </div>
+      </div>
+    </div>
+    <!-- 二级：账号 -->
+    <div id="settings-section-account" class="settings-section hidden">
+      <button class="settings-back" type="button" data-back>‹ 设置</button>
+      <h3>账号</h3>
       <p class="settings-user">当前账号：<strong id="settings-user-name"></strong></p>
       <div class="settings-actions">
         <button class="btn btn-ghost" type="button" id="switch-user-btn">切换用户</button>
         <button class="btn btn-ghost" type="button" id="logout-btn">退出登录</button>
       </div>
     </div>
-    <!-- 外观（所有登录用户可见） -->
-    <div class="settings-appearance">
+    <!-- 二级：外观 -->
+    <div id="settings-section-appearance" class="settings-section hidden">
+      <button class="settings-back" type="button" data-back>‹ 设置</button>
       <h3>外观</h3>
+      <label class="field"><span>液态玻璃透明度 <span class="slider-val" id="glass-opacity-val"></span></span>
+        <span class="slider-row">
+          <input type="range" id="glass-opacity" min="0" max="100" step="1" value="12">
+        </span>
+      </label>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" type="button" id="theme-toggle"><span id="theme-ico">🌙</span> <span id="theme-label">深色模式</span></button>
+      </div>
+    </div>
+    <!-- 二级：地图设置 -->
+    <div id="settings-section-map" class="settings-section hidden">
+      <button class="settings-back" type="button" data-back>‹ 设置</button>
+      <h3>地图设置</h3>
       <div class="field"><span>地图源</span>
         <div class="custom-select" id="map-source-select">
           <button type="button" class="custom-select-btn" id="map-source-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -239,55 +274,53 @@
           </div>
         </div>
       </div>
-      <label class="check-field"><span>地图显示出发地与到达地名称</span>
+      <label class="check-field"><span>显示出发地与到达地名称</span>
         <input type="checkbox" id="show-trip-labels" checked>
       </label>
-      <label class="field"><span>液态玻璃透明度 <span class="slider-val" id="glass-opacity-val"></span></span>
-        <span class="slider-row">
-          <input type="range" id="glass-opacity" min="0" max="100" step="1" value="12">
-        </span>
-      </label>
-      <div class="settings-actions">
-        <button class="btn btn-ghost" type="button" id="theme-toggle"><span id="theme-ico">🌙</span> <span id="theme-label">深色模式</span></button>
+      <!-- 高德 Key（仅管理员可见） -->
+      <div id="settings-amap" class="settings-amap">
+        <label class="field"><span>高德 API Key（可选，用于查不在内置库里的地名）</span>
+          <input type="password" id="s-amap-api-key" placeholder="高德 Web 服务 Key，已设置时留空表示不修改" autocomplete="off">
+        </label>
+        <p class="settings-desc">输入的地名（机场/车站）不在内置库里时，用高德地理编码查真实坐标，这样地图上才能画线。到 <a href="https://lbs.amap.com/" target="_blank" rel="noopener">lbs.amap.com</a> 免费注册应用后把 Web 服务 Key 填在这里（个人每天 30 万次）。不填时只有内置库里的 59 个机场和 52 个车站能画线。</p>
+        <p class="form-error" id="amap-error"></p>
+        <p class="form-ok" id="amap-ok"></p>
+        <div class="settings-actions">
+          <button class="btn btn-primary" type="button" id="save-amap-key-btn">保存</button>
+        </div>
       </div>
     </div>
-    <!-- 管理员设置（仅管理员可见） -->
-    <div id="admin-settings">
-    <p class="settings-desc">设置用于发送注册验证码的邮箱。授权码请在邮箱的设置里获取（163 邮箱：设置 → POP3/SMTP/IMAP → 开启 IMAP/SMTP 服务并获取授权码），<strong>不是邮箱登录密码</strong>。保存后新用户注册就能收到验证码了。</p>
-    <form id="settings-form">
-      <label class="field"><span>SMTP 服务器</span>
-        <input type="text" id="s-smtp-host" placeholder="例如 smtp.163.com" autocomplete="off">
-      </label>
-      <div class="form-row">
-        <label class="field"><span>端口</span>
-          <input type="number" id="s-smtp-port" placeholder="465（SSL）或 587">
+    <!-- 二级：注册设置（仅管理员可见） -->
+    <div id="settings-section-register" class="settings-section hidden">
+      <button class="settings-back" type="button" data-back>‹ 设置</button>
+      <h3>注册设置</h3>
+      <p class="settings-desc">设置用于发送注册验证码的邮箱。授权码请在邮箱的设置里获取（163 邮箱：设置 → POP3/SMTP/IMAP → 开启 IMAP/SMTP 服务并获取授权码），<strong>不是邮箱登录密码</strong>。保存后新用户注册就能收到验证码了。</p>
+      <form id="settings-form">
+        <label class="field"><span>SMTP 服务器</span>
+          <input type="text" id="s-smtp-host" placeholder="例如 smtp.163.com" autocomplete="off">
         </label>
-        <label class="field"><span>发件邮箱</span>
-          <input type="email" id="s-smtp-user" placeholder="例如 you@163.com" autocomplete="off">
+        <div class="form-row">
+          <label class="field"><span>端口</span>
+            <input type="number" id="s-smtp-port" placeholder="465（SSL）或 587">
+          </label>
+          <label class="field"><span>发件邮箱</span>
+            <input type="email" id="s-smtp-user" placeholder="例如 you@163.com" autocomplete="off">
+          </label>
+        </div>
+        <label class="field"><span>授权码</span>
+          <input type="password" id="s-smtp-pass" placeholder="已设置时留空表示不修改" autocomplete="off">
         </label>
-      </div>
-      <label class="field"><span>授权码</span>
-        <input type="password" id="s-smtp-pass" placeholder="已设置时留空表示不修改" autocomplete="off">
-      </label>
-      <label class="field"><span>发件人（可选，默认同发件邮箱）</span>
-        <input type="text" id="s-smtp-from" placeholder="例如 you@163.com" autocomplete="off">
-      </label>
-      <label class="field"><span>航班查询 API Key（可选）</span>
-        <input type="password" id="s-flight-api-key" placeholder="飞常准 CMCP Key，已设置时留空表示不修改" autocomplete="off">
-      </label>
-      <p class="settings-desc">航班自动查询用飞常准 CMCP（cmcp.variflight.com）：在飞常准 CMCP 控制台创建一个 API Key 填在这里，填航班号点「查航班」就能自动填起降机场和时间。不填也能手动录入。</p>
-      <label class="field"><span>高德 API Key（可选，用于查不在内置库里的地名）</span>
-        <input type="password" id="s-amap-api-key" placeholder="高德 Web 服务 Key，已设置时留空表示不修改" autocomplete="off">
-      </label>
-      <p class="settings-desc">输入的地名（机场/车站）不在内置库里时，用高德地理编码查真实坐标，这样地图上才能画线。到 <a href="https://lbs.amap.com/" target="_blank" rel="noopener">lbs.amap.com</a> 免费注册应用后把 Web 服务 Key 填在这里（个人每天 30 万次）。不填时只有内置库里的 59 个机场和 52 个车站能画线。</p>
-      <p class="form-error" id="settings-error"></p>
-      <p class="form-ok" id="settings-ok"></p>
-      <div class="settings-actions">
-        <button class="btn btn-primary" type="submit">保存设置</button>
-        <button class="btn btn-ghost" type="button" id="test-email-btn">发送测试邮件</button>
-      </div>
-    </form>
-    </div><!-- /#admin-settings -->
+        <label class="field"><span>发件人（可选，默认同发件邮箱）</span>
+          <input type="text" id="s-smtp-from" placeholder="例如 you@163.com" autocomplete="off">
+        </label>
+        <p class="form-error" id="settings-error"></p>
+        <p class="form-ok" id="settings-ok"></p>
+        <div class="settings-actions">
+          <button class="btn btn-primary" type="submit">保存设置</button>
+          <button class="btn btn-ghost" type="button" id="test-email-btn">发送测试邮件</button>
+        </div>
+      </form>
+    </div><!-- /#settings-section-register -->
   </section>
 
   <!-- 底部 Dock -->

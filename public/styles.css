@@ -338,14 +338,15 @@ body.dark .type-btn.active { background: rgba(255, 255, 255, 0.18); }
   .form-row { grid-template-columns: 1fr; }
 }
 
-/* 设置页账号区 */
-.settings-account { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--input-border); }
+/* 设置页二级入口：一级是入口列表，点进某一项再看内容 */
+.settings-menu-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 13px 14px; margin-bottom: 8px; font-size: 15px; font-weight: 600; color: var(--text); background: var(--menu-bg); border: 1px solid var(--input-border); border-radius: 14px; cursor: pointer; }
+.settings-menu-item:active { opacity: 0.75; }
+.settings-menu-chevron { font-size: 18px; color: var(--text-soft); }
+.settings-section h3 { margin: 0 0 12px; font-size: 16px; }
+.settings-back { display: inline-block; padding: 4px 0; margin-bottom: 10px; font-size: 14px; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; }
+/* 一级入口的航班查询 Key（仅管理员可见） */
+.settings-flight { padding-top: 14px; margin-top: 6px; border-top: 1px solid var(--input-border); }
 .settings-user { margin: 0 0 10px; font-size: 14px; }
-.settings-account .settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-
-/* 设置页外观区（液态玻璃透明度 + 主题） */
-.settings-appearance { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--input-border); }
-.settings-appearance h3 { margin: 0 0 10px; font-size: 15px; }
 .slider-row { display: flex; align-items: center; gap: 10px; }
 .slider-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
 .slider-val { font-size: 13px; color: var(--text-soft); min-width: 36px; text-align: right; }
