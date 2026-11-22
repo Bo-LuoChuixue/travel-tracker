@@ -459,10 +459,47 @@ function normalizeFlightCache(cached) {
   if (Array.isArray(cached.options) && cached.options.length) {
     // 旧版缓存没有 actual（实际时间）字段，视为过期，重新查接口拿实际时间
     if (!cached.options[0].departure || !('actual' in cached.options[0].departure)) return null;
+    // 旧版缓存没有 aircraft（机型）字段，视为过期，重新查接口拿机型
+    if (!('aircraft' in cached.options[0])) return null;
     return cached;
   }
   // 旧版缓存：单条结果，没有 actual 字段，重新查接口
   return null;
+}
+// 机型英文转中文：Boeing→波音、Airbus→空客等；只有 ICAO 代码时按常见机型映射
+const AIRCRAFT_MAKERS = [
+  [/^Boeing\b/i, '波音'],
+  [/^Airbus\b/i, '空客'],
+  [/^Embraer\b/i, '巴航工业'],
+  [/^Bombardier\b/i, '庞巴迪'],
+  [/^COMAC\b/i, '中国商飞'],
+  [/^McDonnell Douglas\b/i, '麦道'],
+  [/^Sukhoi\b/i, '苏霍伊'],
+  [/^Tupolev\b/i, '图波列夫'],
+  [/^Ilyushin\b/i, '伊尔'],
+  [/^Antonov\b/i, '安东诺夫'],
+];
+const AIRCRAFT_CODES = {
+  B737: '波音 737-700', B738: '波音 737-800', B739: '波音 737-900',
+  B752: '波音 757-200', B763: '波音 767-300',
+  B772: '波音 777-200', B773: '波音 777-300', B77W: '波音 777-300ER',
+  B788: '波音 787-8', B789: '波音 787-9', B78X: '波音 787-10',
+  B744: '波音 747-400', B748: '波音 747-8',
+  A318: '空客 A318', A319: '空客 A319', A320: '空客 A320', A321: '空客 A321',
+  A332: '空客 A330-200', A333: '空客 A330-300',
+  A359: '空客 A350-900', A35K: '空客 A350-1000', A388: '空客 A380-800',
+  E170: '巴航工业 E170', E190: '巴航工业 E190', E195: '巴航工业 E195',
+  C919: '中国商飞 C919', ARJ21: '中国商飞 ARJ21', MA60: '新舟 60',
+};
+function translateAircraft(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  for (const [re, zh] of AIRCRAFT_MAKERS) {
+    if (re.test(s)) return s.replace(re, zh);
+  }
+  const code = s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (AIRCRAFT_CODES[code]) return AIRCRAFT_CODES[code];
+  return s;
 }
 app.get('/api/flights/lookup', authMiddleware, async (req, res) => {
   const flight = String(req.query.flight || '').trim().toUpperCase();
@@ -491,6 +528,8 @@ app.get('/api/flights/lookup', authMiddleware, async (req, res) => {
         flight: flight,
         flight_date: date,
         airline: f.FlightCompany || '',
+        // 机型：飞常准航班状态接口的 generic（全称，如 Boeing 737-85N）或 ftype（代码，如 B738），英文厂商名自动转中文
+        aircraft: translateAircraft(f.generic || f.ftype || ''),
         departure: {
           airport: f.FlightDepAirport || f.FlightDep || '',
           iata: f.FlightDepcode || '',
@@ -598,6 +637,41 @@ seat: t.seat || '',
 notes: t.notes || '',
 };
 }
+// ---------- 行程去重 ----------
+// 同一条行程的判定：同一用户、同一类型、同一起降地（地名去掉末尾的“站/机场”再比，
+// 这样“青城山”和“青城山站”算同一地），并且：
+// - 双方都有航班号/车次号：同一天 + 同一班次号；
+// - 至少一方没有班次号：同一出发时刻。
+// 编辑时排除自身。
+function dupKey(t) {
+const normName = (s) => String(s || '').trim().replace(/(站|机场)$/, '');
+const num = t.type === 'flight'
+? String(t.flight_number || '').trim().toUpperCase()
+: String(t.train_number || '').trim().toUpperCase();
+return {
+type: t.type,
+num,
+date: String(t.dep_time || '').slice(0, 10),
+dep: normName(t.dep_name),
+arr: normName(t.arr_name),
+depTime: String(t.dep_time || ''),
+};
+}
+function isDuplicateTrip(a, b) {
+if (a.type !== b.type || a.dep !== b.dep || a.arr !== b.arr) return false;
+if (a.num && b.num) return a.num === b.num && a.date === b.date;
+return a.depTime !== '' && a.depTime === b.depTime;
+}
+function findDuplicateTrip(userId, fields, excludeId) {
+const rows = db.prepare('SELECT * FROM trips WHERE user_id = ?').all(userId);
+const key = dupKey(fields);
+return rows.find((r) => r.id !== excludeId && isDuplicateTrip(key, dupKey(r))) || null;
+}
+function dupLabel(t) {
+const num = t.type === 'flight' ? t.flight_number : t.train_number;
+const date = String(t.dep_time || '').slice(0, 10);
+return `${num ? num + ' ' : ''}${t.dep_name} → ${t.arr_name}（${date}）`;
+}
 const TRIP_COLS = ['type', 'title', 'flight_number', 'airline', 'aircraft', 'train_number', 'dep_code', 'dep_name', 'dep_lat', 'dep_lon', 'arr_code', 'arr_name', 'arr_lat', 'arr_lon', 'dep_time', 'arr_time', 'seat', 'notes'];
 
 app.get('/api/trips', authMiddleware, (req, res) => {
@@ -611,6 +685,8 @@ app.post('/api/trips', authMiddleware, (req, res) => {
 const err = validateTrip(req.body);
 if (err) return res.status(400).json({ ok: false, error: err});
 const f = tripFields(req.body);
+const dup = findDuplicateTrip(req.user.id, f);
+if (dup) return res.status(409).json({ ok: false, error: `已有相同行程：${dupLabel(dup)}，请勿重复添加` });
 const info = db
 .prepare(
 `INSERT INTO trips (user_id, ${TRIP_COLS.join(', ')}, created_at) VALUES (?, ${TRIP_COLS.map(() => '?').join(', ')},?)`
@@ -628,6 +704,8 @@ const merged = Object.assign({}, existing, req.body);
 const err = validateTrip(merged);
 if (err) return res.status(400).json({ ok: false, error: err});
 const f = tripFields(merged);
+const dup = findDuplicateTrip(req.user.id, f, id);
+if (dup) return res.status(409).json({ ok: false, error: `已有相同行程：${dupLabel(dup)}，请勿重复添加` });
 db.prepare(
 `UPDATE trips SET ${TRIP_COLS.map((c) => `${c} =?`).join(', ')} WHERE id =? AND user_id =?`
 ).run(...TRIP_COLS.map((c) => f[c]), id, req.user.id);
