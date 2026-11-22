@@ -160,14 +160,14 @@
     });
   });
 
-  // ---------- 显示地名开关（设置页复选框，存在本地） ----------
-  // 打开：地图自带地名正常显示；关闭：底图换成无地名的干净底图，只留轨迹两端的地名标签
-  const showLabelsBox = $('show-labels');
-  showLabelsBox.checked = getShowLabels();
-  showLabelsBox.addEventListener('change', () => {
-    localStorage.setItem('tt_show_labels', showLabelsBox.checked ? '1' : '0');
-    applyMapSource(getMapSource());
-    toast(showLabelsBox.checked ? '已显示地图地名' : '已隐藏地图地名，只留轨迹地名');
+  // ---------- 行程端点地名开关（设置页复选框，存在本地） ----------
+  // 打开：地图上显示每条行程出发地与到达地的名称标签；关闭：只显示线路，不显示地名标签
+  const showTripLabelsBox = $('show-trip-labels');
+  showTripLabelsBox.checked = getShowTripLabels();
+  showTripLabelsBox.addEventListener('change', () => {
+    localStorage.setItem('tt_show_trip_labels', showTripLabelsBox.checked ? '1' : '0');
+    drawRoutes(false);
+    toast(showTripLabelsBox.checked ? '已显示出发地与到达地名称' : '已隐藏地名，只显示线路');
   });
 
   // ---------- 认证 ----------
@@ -296,73 +296,46 @@
   function getMapSource() {
     return localStorage.getItem('tt_map_source') || 'amap';
   }
-  // 地名开关：默认显示；存在本地 tt_show_labels（'0' = 隐藏）
-  function getShowLabels() {
-    return localStorage.getItem('tt_show_labels') !== '0';
+  // 行程端点地名开关：默认显示；关掉后地图上只画线路，不画出发地/到达地名称标签
+  function getShowTripLabels() {
+    return localStorage.getItem('tt_show_trip_labels') !== '0';
   }
-  // 底图按「地图源 × 显示地名」组合：开 = 正常带地名的底图（卫星图另叠一层地名标注）；
-  // 关 = 换成无地名的干净底图（标准图用 Esri 深灰底图——浅灰底图太淡，道路几乎看不见；
-  // 卫星图本身无地名），轨迹两端的地名标签不受影响。
+  // 底图按地图源：正常带地名的底图（卫星图另叠一层地名标注）。
   // OSM 源只有「标准地图 / 卫星地图」两种底图。
   function buildLayers(source) {
-    const showLabels = getShowLabels();
     if (source === 'osm') {
-      if (showLabels) {
-        return {
-          base: {
-            '标准地图': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
-            '卫星地图': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
-          },
-          overlay: {
-            '地名标注': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
-          },
-          defaultBase: '标准地图',
-          autoLabel: '地名标注',
-          satelliteBase: '卫星地图',
-        };
-      }
       return {
         base: {
-          '标准地图': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
+          '标准地图': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
           '卫星地图': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
         },
-        overlay: {},
-        defaultBase: '标准地图',
-        autoLabel: null,
-        satelliteBase: '卫星地图',
-      };
-    }
-    if (showLabels) {
-      return {
-        base: {
-          '高德标准': L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
-          '高德卫星': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
-        },
         overlay: {
-          '路网标注': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
+          '地名标注': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
         },
-        defaultBase: '高德标准',
-        autoLabel: '路网标注',
-        satelliteBase: '高德卫星',
+        defaultBase: '标准地图',
+        autoLabel: '地名标注',
+        satelliteBase: '卫星地图',
       };
     }
     return {
       base: {
-        '高德标准': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }),
+        '高德标准': L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
         '高德卫星': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
       },
-      overlay: {},
+      overlay: {
+        '路网标注': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
+      },
       defaultBase: '高德标准',
-      autoLabel: null,
+      autoLabel: '路网标注',
       satelliteBase: '高德卫星',
     };
   }
   let layerControl = null;
   let currentLayers = null;
   let currentBaseName = '';
-  // 当前底图是不是深灰底图（地名关 + 标准图）：深灰底图上黑线看不见，路线要换浅色
+  // 底图不再有深灰无地名版（“显示地名”开关已删，底图一直带地名），永远不是深灰底图
   function isDarkBase() {
-    return !getShowLabels() && (currentBaseName === '标准地图' || currentBaseName === '高德标准');
+    return false;
   }
   function routeColors() {
     return isDarkBase()
@@ -515,8 +488,11 @@
         labelMarkers.push(m);
         return m;
       };
-      labelMarker(a, labelName(t.dep_name), t.type);
-      labelMarker(b, labelName(t.arr_name), t.type);
+      // 端点地名标签开关关掉时只画线路，不画出发地/到达地名称标签
+      if (getShowTripLabels()) {
+        labelMarker(a, labelName(t.dep_name), t.type);
+        labelMarker(b, labelName(t.arr_name), t.type);
+      }
       bounds.push(a, b);
     });
     const flightCount = trips.filter((t) => t.type === 'flight').length;
