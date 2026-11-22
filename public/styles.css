@@ -4,6 +4,8 @@
   --glass-bg: rgba(255, 255, 255, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, calc(var(--glass-opacity) * 2.92));
   --glass-shadow: 0 8px 32px rgba(31, 38, 135, calc(var(--glass-opacity) * 1.5));
+  /* 浮层菜单（下拉框）背景：比面板玻璃更不透明，否则盖不住底下的文字 */
+  --menu-bg: rgba(255, 255, 255, calc(var(--glass-opacity) + 0.68));
   --text: #1c1c28;
   --text-soft: rgba(28, 28, 40, 0.62);
   --input-bg: rgba(255, 255, 255, 0.45);
@@ -17,6 +19,7 @@ body.dark {
   --glass-bg: rgba(20, 20, 30, var(--glass-opacity));
   --glass-border: rgba(255, 255, 255, calc(var(--glass-opacity) * 1.17));
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, calc(var(--glass-opacity) * 3.75));
+  --menu-bg: rgba(20, 20, 30, calc(var(--glass-opacity) + 0.68));
   --text: #f2f2f7;
   --text-soft: rgba(242, 242, 247, 0.62);
   --input-bg: rgba(255, 255, 255, 0.08);
@@ -95,7 +98,7 @@ body.dark .tab.active { background: rgba(255, 255, 255, 0.18); }
 .custom-select-btn[aria-expanded="true"] .custom-select-caret { transform: rotate(180deg); }
 .custom-select-list {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
-  background: var(--glass-bg);
+  background: var(--menu-bg);
   -webkit-backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%);
   backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%);
   border: 1px solid var(--glass-border); border-radius: 14px;
@@ -109,7 +112,7 @@ body.dark .tab.active { background: rgba(255, 255, 255, 0.18); }
   padding: 10px 12px; cursor: pointer;
 }
 .custom-select-option:hover { background: rgba(47, 123, 255, 0.12); }
-.custom-select-option.selected { font-weight: 700; }
+.custom-select-option.selected { font-weight: 700; background: rgba(47, 123, 255, 0.10); }
 .custom-select-option.selected::after { content: "✓"; color: #2f7bff; font-weight: 700; }
 /* 密码显示 / 隐藏开关：输入框右边的小按钮 */
 .pw-field { position: relative; }
