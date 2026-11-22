@@ -466,6 +466,8 @@
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
   // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素）：
   // 都江堰站往左挪一点、和青城山站平行；犀浦站往左下挪一点、幅度小一点。
+  // 只在用户截图那个层级（2026-11-22 16:03 那张，全国图，6 级）生效，其他层级不动。
+  const LABEL_NUDGE_ZOOM = 6;
   const LABEL_NUDGE = {
     '都江堰站': { dx: -20, dy: -6 },
     '犀浦站': { dx: -10, dy: 8 },
@@ -581,8 +583,9 @@
         continue;
       }
       // 手动微调：个别站的标签按用户指定的方向再挪一点（加在防重叠选出的位置上）；
+      // 只在截图那个层级生效，其他层级不加微调
       // 挪完的位置仍要在地图框内、且不跟已放好的标签重叠，否则保持原位置不动
-      const nudge = LABEL_NUDGE[tip.getContent()];
+      const nudge = zoom === LABEL_NUDGE_ZOOM ? LABEL_NUDGE[tip.getContent()] : undefined;
       if (nudge) {
         const ndx = chosen.dx + nudge.dx, ndy = chosen.dy + nudge.dy;
         let nleft, ntop;
