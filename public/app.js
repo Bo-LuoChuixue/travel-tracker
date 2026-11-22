@@ -520,6 +520,15 @@
     const placed = [];
     const GAP = 4;
     const overlaps = (r) => placed.some((p) => r.left < p.right + GAP && r.right > p.left - GAP && r.top < p.bottom + GAP && r.bottom > p.top - GAP);
+    // 排成一列：候选标签跟已放好的某个标签左右位置基本重合（横向重叠过半），且上下分开
+    // （纵向间距 0~120px）——即使不重叠，这种纵向一列用户也不想要，挪开它
+    const inColumn = (r) => placed.some((p) => {
+      const overlapX = Math.min(r.right, p.right) - Math.max(r.left, p.left);
+      const minW = Math.min(r.right - r.left, p.right - p.left);
+      if (overlapX < minW * 0.5) return false;
+      const gapY = r.top >= p.bottom ? r.top - p.bottom : p.top >= r.bottom ? p.top - r.bottom : -1;
+      return gapY >= 0 && gapY <= 120;
+    });
     const zoom = map.getZoom();
     for (const marker of labelMarkers) {
       const tip = marker.getTooltip && marker.getTooltip();
@@ -561,7 +570,7 @@
         else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
         const r = { left, top, right: left + w, bottom: top + h };
         const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
-        if (inside && !overlaps(r)) { chosen = { dir, dx, dy, rect: r }; break; }
+        if (inside && !overlaps(r) && !inColumn(r)) { chosen = { dir, dx, dy, rect: r }; break; }
       }
       if (!chosen) {
         // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
@@ -582,7 +591,7 @@
         else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
         const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
         const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
-        if (nInside && !overlaps(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
+        if (nInside && !overlaps(nr) && !inColumn(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
