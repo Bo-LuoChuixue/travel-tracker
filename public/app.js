@@ -545,6 +545,14 @@
   // 放到第一个不重叠、且在地图框内的位置；实在没空位就保持默认正下方。
   // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend（缩放结束也会触发）
   // 和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
+  // 点到线段的距离（屏幕像素坐标），用于“站名离自己线路最近”这条底层限制
+  function distPointToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq ? ((px - x1) * dx + (py - y1) * dy) / lenSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
   function deoverlapLabels() {
     if (!map || !labelMarkers.length) return;
     const box = map.getContainer().getBoundingClientRect();
@@ -560,6 +568,27 @@
       const gapY = r.top >= p.bottom ? r.top - p.bottom : p.top >= r.bottom ? p.top - r.bottom : -1;
       return gapY >= 0 && gapY <= 120;
     });
+    // 底层限制（用户 2026-11-22 18:20，要求对所有站名都成立）：
+    // 站名离自己线路的距离，必须小于离别的线路的距离——否则站名看起来像属于别的线路。
+    // 实现：先把所有线路折线换算成屏幕坐标；对每个候选标签位置，算标签中心到自己线路
+    // （经过本站的线路）的最短距离 dOwn、到别的线路的最短距离 dOther，只有 dOwn < dOther 才接受。
+    const routeSegs = [];
+    if (routeLayer) {
+      routeLayer.eachLayer((layer) => {
+        if (!(layer instanceof L.Polyline)) return;
+        const ll = layer.getLatLngs();
+        if (!ll || ll.length < 2) return;
+        routeSegs.push({ pts: ll.map((p) => map.latLngToContainerPoint(p)), first: ll[0], last: ll[ll.length - 1] });
+      });
+    }
+    const stationKey = (ll) => ll.lat.toFixed(5) + ',' + ll.lng.toFixed(5);
+    const distToPoly = (cx, cy, pts) => {
+      let best = Infinity;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        best = Math.min(best, distPointToSegment(cx, cy, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y));
+      }
+      return best;
+    };
     const zoom = map.getZoom();
     for (const marker of labelMarkers) {
       const tip = marker.getTooltip && marker.getTooltip();
@@ -574,6 +603,19 @@
       const pt = map.latLngToContainerPoint(marker.getLatLng());
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
+      // 本站的线路 = 经过本站的线路（端点就是本站）；别的线路 = 不经过本站的线路。
+      // 候选位置的标签中心离自己线路必须比离别的线路更近，否则这个位置会让站名看起来属于别的线路，直接否掉。
+      const ownKey = stationKey(marker.getLatLng());
+      const nearestRoute = (cx, cy) => {
+        let dOwn = Infinity, dOther = Infinity;
+        for (const seg of routeSegs) {
+          const d = distToPoly(cx, cy, seg.pts);
+          const isOwn = stationKey(seg.first) === ownKey || stationKey(seg.last) === ownKey;
+          if (isOwn) dOwn = Math.min(dOwn, d); else dOther = Math.min(dOther, d);
+        }
+        if (!isFinite(dOwn)) return true; // 找不到自己线路时不卡（兜底）
+        return dOwn < dOther;
+      };
       // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
       // 都江堰（有手动微调的层级除外）：用户要求放到上面、贴着自己站——先试正上方居中近处，不用远处位置；左上偏得太远用户说不行，改回正上方
       const labelNameForPlace = tip.getContent();
@@ -601,7 +643,7 @@
         else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
         const r = { left, top, right: left + w, bottom: top + h };
         const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
-        if (inside && !overlaps(r) && !inColumn(r)) { chosen = { dir, dx, dy, rect: r }; break; }
+        if (inside && !overlaps(r) && !inColumn(r) && nearestRoute((r.left + r.right) / 2, (r.top + r.bottom) / 2)) { chosen = { dir, dx, dy, rect: r }; break; }
       }
       if (!chosen) {
         // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
@@ -623,7 +665,7 @@
         else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
         const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
         const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
-        if (nInside && !overlaps(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
+        if (nInside && !overlaps(nr) && nearestRoute((nr.left + nr.right) / 2, (nr.top + nr.bottom) / 2)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
