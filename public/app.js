@@ -13,7 +13,6 @@
   let stations = [];
   let map = null;
   let routeLayer = null;
-  let leaderLayer = null; // 标签到站点的引导线图层
   let tripType = 'flight';
   let editingId = null;
 
@@ -376,14 +375,12 @@
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     applyMapSource(getMapSource());
     routeLayer = L.layerGroup().addTo(map);
-    leaderLayer = L.layerGroup().addTo(map);
     map.on('click', () => {
       showPanel(null);
     });
-    // 缩放 / 尺寸变化会改变标签重叠情况，重算防重叠并重画引导线
-    // （平移不改变相对位置，moveend 里一起覆盖）
-    map.on('moveend', () => requestAnimationFrame(relayoutLabels));
-    map.on('resize', () => requestAnimationFrame(relayoutLabels));
+    // 缩放 / 尺寸变化会改变标签重叠情况，重算防重叠（平移不改变相对位置，moveend 里一起覆盖）
+    map.on('moveend', () => requestAnimationFrame(deoverlapLabels));
+    map.on('resize', () => requestAnimationFrame(deoverlapLabels));
   }
   // 切换地图源：拆掉旧底图/标注，换上新源的底图（默认第一张），重建图层切换器
   function applyMapSource(source) {
@@ -465,7 +462,6 @@
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
-    if (leaderLayer) leaderLayer.clearLayers();
     labelMarkers = [];
     // 同一个站是多条行程的端点时只标一次（比如犀浦站同时是两条线的终点）
     const seenEndpoints = new Set();
@@ -486,7 +482,7 @@
       const offsetFactor = t.type === 'flight' ? 0.18 + k * 0.15 : k * 0.12;
       const pts = arcPoints(a, b, 40, offsetFactor);
       L.polyline(pts, { color, weight: 3, opacity: 0.85 }).addTo(routeLayer);
-      // 端点画一个小圆点 + 地名文字标签（小圆角 pill）；标签被防重叠挪开后，靠圆点和引导线认出是哪个站
+      // 端点只显示地名文字标签（小圆角 pill，悬在端点上方），不要图钉
       // 标签上不显示机场代码：手动填的“全称 (CODE)”、以及历史遗留的带代码名字
       // （如“合肥新桥国际机场 (HFE)”）在显示时都去掉末尾的“ (CODE)”，只留全称。
       const labelName = (name) => String(name || '').replace(/\s*\([A-Za-z0-9]{2,4}\)\s*$/, '');
@@ -494,8 +490,6 @@
         const key = latlon.join(',');
         if (seenEndpoints.has(key)) return;
         seenEndpoints.add(key);
-        // 圆点标出站点的真实位置（白边 + 路线色，亮底深底都看得见）
-        L.circleMarker(latlon, { radius: 4.5, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(routeLayer);
         const m = L.marker(latlon, {
           icon: L.divIcon({ className: 'place-label-marker', html: '', iconSize: [0, 0] }),
           interactive: false,
@@ -503,7 +497,6 @@
           .bindTooltip(name, { permanent: true, direction: 'bottom', offset: [0, 8], className: 'place-label-tip' })
           .addTo(routeLayer);
         m._labelPlace = 'bottom:0,8';
-        m._leaderColor = color;
         labelMarkers.push(m);
         return m;
       };
@@ -521,7 +514,7 @@
         ? '还没有行程，点击下方「添加行程」记录第一条轨迹。'
         : `已加载 ${flightCount} 条航线<span class="legend-line" style="background:${cols.flight}"></span>，${trainCount} 条铁路线<span class="legend-line" style="background:${cols.train}"></span>。`;
     if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
-    requestAnimationFrame(relayoutLabels);
+    requestAnimationFrame(deoverlapLabels);
   }
 
   // ---------- 地名标签防重叠 ----------
@@ -576,42 +569,6 @@
       const name = tip.getContent();
       marker.unbindTooltip();
       marker.bindTooltip(name, { permanent: true, direction: chosen.dir, offset: [chosen.dx, chosen.dy], className: 'place-label-tip' });
-    }
-  }
-
-  // 标签挪位后重画引导线（防重叠是同步改 tooltip，下一帧再量位置画线才准）
-  function relayoutLabels() {
-    deoverlapLabels();
-    requestAnimationFrame(drawLeaders);
-  }
-
-  // 引导线：每个标签到它那个站点的圆点连一条细线，标签被挪开也能认出是哪个站
-  function drawLeaders() {
-    if (!map || !leaderLayer || !labelMarkers.length) return;
-    leaderLayer.clearLayers();
-    const box = map.getContainer().getBoundingClientRect();
-    for (const marker of labelMarkers) {
-      const tip = marker.getTooltip && marker.getTooltip();
-      if (!tip) continue;
-      const el = tip.getElement();
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      const w = r.width, h = r.height;
-      if (!w || !h) continue;
-      const cx = r.left - box.left + w / 2;
-      const cy = r.top - box.top + h / 2;
-      const pt = map.latLngToContainerPoint(marker.getLatLng());
-      // 线只画到标签边上（从标签中心指向站点的射线与标签矩形的交点），不伸进标签底下
-      const dx = pt.x - cx, dy = pt.y - cy;
-      let ex = cx, ey = cy;
-      if (dx || dy) {
-        const tx = dx !== 0 ? (w / 2) / Math.abs(dx) : Infinity;
-        const ty = dy !== 0 ? (h / 2) / Math.abs(dy) : Infinity;
-        const t = Math.min(tx, ty);
-        ex = cx + dx * t; ey = cy + dy * t;
-      }
-      const edgeLatLng = map.containerPointToLatLng([ex, ey]);
-      L.polyline([marker.getLatLng(), edgeLatLng], { color: marker._leaderColor || '#666', weight: 1, opacity: 0.55 }).addTo(leaderLayer);
     }
   }
 
