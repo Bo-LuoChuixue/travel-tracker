@@ -464,6 +464,12 @@
   // 机场离得远：5 级（全国）还分得清，4 级（亚洲）合肥/上海才靠得很近 → 5 级以下藏。
   // 缩得太远时只显示轨迹线，不显示地名。
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
+  // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素）：
+  // 都江堰站往左挪一点、和青城山站平行；犀浦站往左下挪一点、幅度小一点。
+  const LABEL_NUDGE = {
+    '都江堰站': { dx: -20, dy: -6 },
+    '犀浦站': { dx: -10, dy: 8 },
+  };
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
@@ -573,6 +579,20 @@
         const cr = el.getBoundingClientRect();
         placed.push({ left: cr.left - box.left, top: cr.top - box.top, right: cr.right - box.left, bottom: cr.bottom - box.top });
         continue;
+      }
+      // 手动微调：个别站的标签按用户指定的方向再挪一点（加在防重叠选出的位置上）；
+      // 挪完的位置仍要在地图框内、且不跟已放好的标签重叠，否则保持原位置不动
+      const nudge = LABEL_NUDGE[tip.getContent()];
+      if (nudge) {
+        const ndx = chosen.dx + nudge.dx, ndy = chosen.dy + nudge.dy;
+        let nleft, ntop;
+        if (chosen.dir === 'bottom') { nleft = pt.x - w / 2 + ndx; ntop = pt.y + ndy; }
+        else if (chosen.dir === 'top') { nleft = pt.x - w / 2 + ndx; ntop = pt.y + ndy - h; }
+        else if (chosen.dir === 'right') { nleft = pt.x + ndx; ntop = pt.y - h / 2 + ndy; }
+        else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
+        const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
+        const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
+        if (nInside && !overlaps(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
