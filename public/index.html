@@ -32,9 +32,12 @@
       <label class="field"><span>邮箱</span>
         <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
       </label>
-      <label class="field"><span>密码</span>
-        <input type="password" id="login-password" required placeholder="请输入密码" autocomplete="current-password">
-      </label>
+      <div class="field"><span>密码</span>
+        <div class="pw-field">
+          <input type="password" id="login-password" required placeholder="请输入密码" autocomplete="current-password">
+          <button type="button" class="pw-toggle" data-target="login-password" aria-label="显示密码">显示</button>
+        </div>
+      </div>
       <p class="form-error" id="login-error"></p>
       <button class="btn btn-primary" type="submit">登录</button>
       <button class="link-btn" type="button" id="show-forgot">忘记密码？</button>
@@ -48,9 +51,12 @@
       <label class="field"><span>邮箱</span>
         <input type="email" id="reg-email" required placeholder="you@example.com" autocomplete="email">
       </label>
-      <label class="field"><span>密码</span>
-        <input type="password" id="reg-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
-      </label>
+      <div class="field"><span>密码</span>
+        <div class="pw-field">
+          <input type="password" id="reg-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
+          <button type="button" class="pw-toggle" data-target="reg-password" aria-label="显示密码">显示</button>
+        </div>
+      </div>
       <p class="form-error" id="reg-error"></p>
       <button class="btn btn-primary" type="submit">发送验证码</button>
     </form>
@@ -82,9 +88,12 @@
       <label class="field"><span>验证码</span>
         <input type="text" id="reset-code" required inputmode="numeric" maxlength="6" placeholder="6 位数字验证码" autocomplete="one-time-code">
       </label>
-      <label class="field"><span>新密码</span>
-        <input type="password" id="reset-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
-      </label>
+      <div class="field"><span>新密码</span>
+        <div class="pw-field">
+          <input type="password" id="reset-password" required minlength="8" maxlength="20" placeholder="8-20 位，包含字母和数字" autocomplete="new-password">
+          <button type="button" class="pw-toggle" data-target="reset-password" aria-label="显示密码">显示</button>
+        </div>
+      </div>
       <p class="form-error" id="reset-error"></p>
       <button class="btn btn-primary" type="submit">重置密码</button>
       <button class="link-btn" type="button" id="back-to-login-2">返回登录</button>
@@ -218,12 +227,18 @@
     <!-- 外观（所有登录用户可见） -->
     <div class="settings-appearance">
       <h3>外观</h3>
-      <label class="field"><span>地图源</span>
-        <select id="map-source">
-          <option value="amap">高德地图</option>
-          <option value="osm">OpenStreetMap</option>
-        </select>
-      </label>
+      <div class="field"><span>地图源</span>
+        <div class="custom-select" id="map-source-select">
+          <button type="button" class="custom-select-btn" id="map-source-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span id="map-source-label">高德地图</span>
+            <svg class="custom-select-caret" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="custom-select-list" id="map-source-list" role="listbox" hidden>
+            <button type="button" class="custom-select-option" role="option" data-value="amap">高德地图</button>
+            <button type="button" class="custom-select-option" role="option" data-value="osm">OpenStreetMap</button>
+          </div>
+        </div>
+      </div>
       <label class="check-field"><span>显示地名</span>
         <input type="checkbox" id="show-labels" checked>
       </label>

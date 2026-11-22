@@ -103,14 +103,61 @@
     localStorage.setItem(GLASS_KEY, String(pct));
   });
 
-  // ---------- 地图源切换（设置页下拉框，存在本地，切换后立即换底图） ----------
-  const mapSourceSel = $('map-source');
-  mapSourceSel.value = getMapSource();
-  mapSourceSel.addEventListener('change', () => {
-    const src = mapSourceSel.value === 'osm' ? 'osm' : 'amap';
+  // ---------- 地图源切换（设置页自定义下拉框：原生 select 的展开列表是系统样式改不了，所以用按钮 + 列表自己画；存在本地，切换后立即换底图） ----------
+  const MAP_SOURCE_LABELS = { amap: '高德地图', osm: 'OpenStreetMap' };
+  const mapSourceWrap = $('map-source-select');
+  const mapSourceBtn = $('map-source-btn');
+  const mapSourceLabel = $('map-source-label');
+  const mapSourceList = $('map-source-list');
+  function renderMapSourceDropdown(src) {
+    mapSourceLabel.textContent = MAP_SOURCE_LABELS[src] || MAP_SOURCE_LABELS.amap;
+    mapSourceList.querySelectorAll('.custom-select-option').forEach((opt) => {
+      const on = opt.dataset.value === src;
+      opt.classList.toggle('selected', on);
+      opt.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  function setMapSource(src) {
+    src = src === 'osm' ? 'osm' : 'amap';
     localStorage.setItem('tt_map_source', src);
     applyMapSource(src);
+    renderMapSourceDropdown(src);
     toast(src === 'osm' ? '已切换到 OpenStreetMap' : '已切换到高德地图');
+  }
+  function closeMapSourceDropdown() {
+    mapSourceList.hidden = true;
+    mapSourceBtn.setAttribute('aria-expanded', 'false');
+  }
+  renderMapSourceDropdown(getMapSource());
+  mapSourceBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = mapSourceList.hidden;
+    mapSourceList.hidden = !willOpen;
+    mapSourceBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  });
+  mapSourceList.addEventListener('click', (e) => {
+    const opt = e.target.closest('.custom-select-option');
+    if (!opt) return;
+    setMapSource(opt.dataset.value);
+    closeMapSourceDropdown();
+  });
+  document.addEventListener('click', (e) => {
+    if (!mapSourceWrap.contains(e.target)) closeMapSourceDropdown();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMapSourceDropdown();
+  });
+
+  // ---------- 密码显示 / 隐藏开关（登录、注册、重置密码三个密码框） ----------
+  document.querySelectorAll('.pw-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? '隐藏' : '显示';
+      btn.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+    });
   });
 
   // ---------- 显示地名开关（设置页复选框，存在本地） ----------

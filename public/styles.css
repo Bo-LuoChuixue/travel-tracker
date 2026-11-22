@@ -81,19 +81,45 @@ body.dark .tab.active { background: rgba(255, 255, 255, 0.18); }
   border-radius: 14px; padding: 12px 14px; outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-/* 地图源选择框：和底下输入框同一套玻璃样式（原生 select 默认是白底，很突兀） */
-.field select {
-  width: 100%; font: inherit; color: var(--text);
-  background-color: var(--input-bg); border: 1px solid var(--input-border);
-  border-radius: 14px; padding: 12px 38px 12px 14px; outline: none;
-  appearance: none; -webkit-appearance: none; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 14px center;
-  transition: border-color 0.2s, box-shadow 0.2s;
+.field input:focus { border-color: #2f7bff; box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.18); }
+/* 地图源自定义下拉框：原生 select 的展开列表是系统渲染的，CSS 改不了样式，所以用按钮 + 列表自己画，和界面其他地方同一套玻璃样式（跟随透明度滑杆） */
+.custom-select { position: relative; }
+.custom-select-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font: inherit; color: var(--text); background: var(--input-bg);
+  border: 1px solid var(--input-border); border-radius: 14px; padding: 12px 14px;
+  outline: none; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
 }
-.field input:focus, .field select:focus { border-color: #2f7bff; box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.18); }
-/* 下拉列表用系统原生弹出层：白底深字，保证在深色模式下也看得清 */
-.field select option { color: #222; background: #fff; }
+.custom-select-btn:focus { border-color: #2f7bff; box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.18); }
+.custom-select-caret { flex: none; color: var(--text-soft); transition: transform 0.2s; }
+.custom-select-btn[aria-expanded="true"] .custom-select-caret { transform: rotate(180deg); }
+.custom-select-list {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%);
+  backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%);
+  border: 1px solid var(--glass-border); border-radius: 14px;
+  box-shadow: var(--glass-shadow); padding: 6px;
+}
+.custom-select-list[hidden] { display: none; }
+.custom-select-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left; font: inherit; color: var(--text);
+  background: transparent; border: none; border-radius: 10px;
+  padding: 10px 12px; cursor: pointer;
+}
+.custom-select-option:hover { background: rgba(47, 123, 255, 0.12); }
+.custom-select-option.selected { font-weight: 700; }
+.custom-select-option.selected::after { content: "✓"; color: #2f7bff; font-weight: 700; }
+/* 密码显示 / 隐藏开关：输入框右边的小按钮 */
+.pw-field { position: relative; }
+.pw-field input { padding-right: 56px; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: var(--text-soft);
+  font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+}
+.pw-toggle:hover { color: var(--text); background: rgba(128, 128, 128, 0.12); }
 /* 航空公司行：输入框 + 航司小 logo（24px，识别到航司后显示） */
 .airline-row { display: flex; align-items: center; gap: 10px; }
 .airline-row input { flex: 1; min-width: 0; }

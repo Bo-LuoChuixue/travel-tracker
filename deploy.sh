@@ -10,7 +10,8 @@
 #
 # 脚本会做这些事（幂等，可重复跑）：
 #   1. 安装 Node.js 20、nginx、certbot
-#   2. 把代码拉到 /opt/travel-tracker（已有则 git pull 更新）
+#   2. 把代码拉到 /opt/travel-tracker（已有则 git pull 更新；更新前先把 data/ 和
+#      .env 备份到 /opt/travel-tracker-backup，更新完还原；备份保留到用户确认无误后手动删除）
 #   3. npm install --omit=dev
 #   4. 生成 .env（PORT=3000 + 随机 JWT_SECRET；已有 .env 不动）
 #   5. 创建并启动 systemd 服务 travel-tracker（只重启这一个服务）
@@ -55,6 +56,16 @@ fi
 echo "    node $(node --version)，npm $(npm --version)"
 
 echo "==> [2/6] 拉取代码到 $APP_DIR..."
+# 先备份运行数据和配置（数据库、.env）到固定位置：更新代码绝不能动它们，
+# 否则首次部署（目录不是 git 仓库时）会整目录删掉重拉，数据全丢。
+# 备份固定放在 /opt/travel-tracker-backup（每次部署覆盖上一次，不会堆积），
+# 部署后不自动删除：等用户确认网站正常后，再手动删除。
+KEEP_DIR="/opt/travel-tracker-backup"
+rm -rf "$KEEP_DIR"
+mkdir -p "$KEEP_DIR"
+echo "    备份数据到 $KEEP_DIR..."
+[ -d "$APP_DIR/data" ] && cp -a "$APP_DIR/data" "$KEEP_DIR/data"
+[ -f "$APP_DIR/.env" ] && cp -a "$APP_DIR/.env" "$KEEP_DIR/.env"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch -q origin "$BRANCH"
   git -C "$APP_DIR" checkout -q "$BRANCH"
@@ -63,6 +74,10 @@ else
   rm -rf "$APP_DIR"
   git clone -q --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
+# 把备份的数据和配置还原回去（备份本身保留，等用户确认无误后再删）
+[ -d "$KEEP_DIR/data" ] && { mkdir -p "$APP_DIR/data"; cp -a "$KEEP_DIR/data/." "$APP_DIR/data/"; }
+[ -f "$KEEP_DIR/.env" ] && cp -a "$KEEP_DIR/.env" "$APP_DIR/.env"
+echo "    数据和配置已还原（备份保留在 $KEEP_DIR）"
 
 echo "==> [3/6] 安装依赖..."
 cd "$APP_DIR"
@@ -134,4 +149,6 @@ fi
 
 echo
 echo "部署完成：https://$DOMAIN/"
+echo "备份保留在 /opt/travel-tracker-backup：请确认网站登录、行程和设置都正常，"
+echo "确认无误后删除备份：sudo rm -rf /opt/travel-tracker-backup"
 echo "第一个注册的用户自动成为管理员（无需验证码），再去「⚙️ 设置」里填发件邮箱和授权码。"
