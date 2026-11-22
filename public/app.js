@@ -454,29 +454,6 @@
   // 机场离得远：5 级（全国）还分得清，4 级（亚洲）合肥/上海才靠得很近 → 5 级以下藏。
   // 缩得太远时只显示轨迹线，不显示地名。
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
-  // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素），只在指定的那三个层级生效，其他层级不动。
-  // 层级是浏览器直接在地图上核对的：当前全国图是 6 级（1534 像素约跨 34°经度），再放大一级是 7 级、两级是 8 级。
-  // 用户要求（2026-11-22 18:18）：站名不能重叠；站名要和地点对应上；标签不能离自己站太远、不能比到别的线路还近。
-  // 所以微调只能是小幅度（20–30 像素）：刚好把竖着排成一列的标签错开一点、互相不重叠，同时标签仍贴着自己站。
-  // 之前 -50/-60/-80 推得太远，青城山飘离了自己站，用户说越改越差——已改回小幅度。
-  // 6 级（全国图）：都江堰往左挪一点、和青城山平行；犀浦往左下挪一点、幅度小一点；青城山往左挪一点。
-  // 7 级（成都到长沙的中景）：青城山往左挪一点。
-  // 8 级（成都放大图）：青城山往左挪一点。
-  // 行程库里的站名已是用户自己改成不带“站”的（都江堰/犀浦/青城山），这里的 key 用不带站的名字。
-  const LABEL_NUDGE_BY_ZOOM = {
-    6: {
-      '都江堰': { dx: -20, dy: -6 },
-      '青城山': { dx: -20, dy: 0 },
-      '犀浦': { dx: -10, dy: 8 },
-    },
-    7: {
-      '青城山': { dx: -25, dy: 0 },
-    },
-    8: {
-      '青城山': { dx: -30, dy: 0 },
-    },
-  };
-  const nudgeFor = (zoom, name) => (LABEL_NUDGE_BY_ZOOM[zoom] || {})[name];
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
@@ -540,55 +517,18 @@
   }
 
   // ---------- 地名标签防重叠 ----------
-  // 标签默认放在端点正下方；两个端点靠得近时 pill 会叠在一起（如都江堰站和青城山）。
-  // 画完后检测重叠：按顺序保留先画的标签，后面的依次尝试上 / 左 / 右 / 斜角 / 远处等空位，
-  // 放到第一个不重叠、且在地图框内的位置；实在没空位就保持默认正下方。
+  // 每条线路的起点/终点各显示一个对应的站名，站名贴在自己端点附近。
+  // 唯一要求：站名之间不能重叠。做法很简单——按端点顺序依次放标签，
+  // 每个标签先试正下方，再试上 / 左 / 右 / 斜角 / 远处，放到第一个不重叠、且在地图框内的位置；
+  // 实在没空位就保持默认正下方。不做成列检测、不做按层级微调、不做离线路距离判断。
   // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend（缩放结束也会触发）
   // 和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
-  // 点到线段的距离（屏幕像素坐标），用于“站名离自己线路最近”这条底层限制
-  function distPointToSegment(px, py, x1, y1, x2, y2) {
-    const dx = x2 - x1, dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq ? ((px - x1) * dx + (py - y1) * dy) / lenSq : 0;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-  }
   function deoverlapLabels() {
     if (!map || !labelMarkers.length) return;
     const box = map.getContainer().getBoundingClientRect();
     const placed = [];
     const GAP = 4;
     const overlaps = (r) => placed.some((p) => r.left < p.right + GAP && r.right > p.left - GAP && r.top < p.bottom + GAP && r.bottom > p.top - GAP);
-    // 排成一列：候选标签跟已放好的某个标签左右位置基本重合（横向重叠过半），且上下分开
-    // （纵向间距 0~120px）——即使不重叠，这种纵向一列用户也不想要，挪开它
-    const inColumn = (r) => placed.some((p) => {
-      const overlapX = Math.min(r.right, p.right) - Math.max(r.left, p.left);
-      const minW = Math.min(r.right - r.left, p.right - p.left);
-      if (overlapX < minW * 0.5) return false;
-      const gapY = r.top >= p.bottom ? r.top - p.bottom : p.top >= r.bottom ? p.top - r.bottom : -1;
-      return gapY >= 0 && gapY <= 120;
-    });
-    // 底层限制（用户 2026-11-22 18:20，要求对所有站名都成立）：
-    // 站名离自己线路的距离，必须小于离别的线路的距离——否则站名看起来像属于别的线路。
-    // 实现：先把所有线路折线换算成屏幕坐标；对每个候选标签位置，算标签中心到自己线路
-    // （经过本站的线路）的最短距离 dOwn、到别的线路的最短距离 dOther，只有 dOwn < dOther 才接受。
-    const routeSegs = [];
-    if (routeLayer) {
-      routeLayer.eachLayer((layer) => {
-        if (!(layer instanceof L.Polyline)) return;
-        const ll = layer.getLatLngs();
-        if (!ll || ll.length < 2) return;
-        routeSegs.push({ pts: ll.map((p) => map.latLngToContainerPoint(p)), first: ll[0], last: ll[ll.length - 1] });
-      });
-    }
-    const stationKey = (ll) => ll.lat.toFixed(5) + ',' + ll.lng.toFixed(5);
-    const distToPoly = (cx, cy, pts) => {
-      let best = Infinity;
-      for (let i = 0; i + 1 < pts.length; i++) {
-        best = Math.min(best, distPointToSegment(cx, cy, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y));
-      }
-      return best;
-    };
     const zoom = map.getZoom();
     for (const marker of labelMarkers) {
       const tip = marker.getTooltip && marker.getTooltip();
@@ -603,37 +543,14 @@
       const pt = map.latLngToContainerPoint(marker.getLatLng());
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
-      // 本站的线路 = 经过本站的线路（端点就是本站）；别的线路 = 不经过本站的线路。
-      // 候选位置的标签中心离自己线路必须比离别的线路更近，否则这个位置会让站名看起来属于别的线路，直接否掉。
-      const ownKey = stationKey(marker.getLatLng());
-      const nearestRoute = (cx, cy) => {
-        let dOwn = Infinity, dOther = Infinity;
-        for (const seg of routeSegs) {
-          const d = distToPoly(cx, cy, seg.pts);
-          const isOwn = stationKey(seg.first) === ownKey || stationKey(seg.last) === ownKey;
-          if (isOwn) dOwn = Math.min(dOwn, d); else dOther = Math.min(dOther, d);
-        }
-        if (!isFinite(dOwn)) return true; // 找不到自己线路时不卡（兜底）
-        return dOwn < dOther;
-      };
-      // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
-      // 都江堰（有手动微调的层级除外）：用户要求放到上面、贴着自己站——先试正上方居中近处，不用远处位置；左上偏得太远用户说不行，改回正上方
-      const labelNameForPlace = tip.getContent();
-      const preferTop = labelNameForPlace === '都江堰' && !nudgeFor(zoom, '都江堰');
-      const candidates = preferTop
-        ? [
-            ['top', 0, -8],
-            ['bottom', 0, 8], ['right', 8, 0], ['left', -8, 0],
-            ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
-            ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
-          ]
-        : [
-            ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
-            ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
-            ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
-            ['bottom', 0, h + 12], ['top', 0, -h - 12],
-            ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
-          ];
+      // 候选位置（方向 + 偏移）：先试正下方，再试上 / 左 / 右 / 斜角 / 远处
+      const candidates = [
+        ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
+        ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
+        ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
+        ['bottom', 0, h + 12], ['top', 0, -h - 12],
+        ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
+      ];
       let chosen = null;
       for (const [dir, dx, dy] of candidates) {
         let left, top;
@@ -643,29 +560,13 @@
         else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
         const r = { left, top, right: left + w, bottom: top + h };
         const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
-        if (inside && !overlaps(r) && !inColumn(r) && nearestRoute((r.left + r.right) / 2, (r.top + r.bottom) / 2)) { chosen = { dir, dx, dy, rect: r }; break; }
+        if (inside && !overlaps(r)) { chosen = { dir, dx, dy, rect: r }; break; }
       }
       if (!chosen) {
         // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
         const cr = el.getBoundingClientRect();
         placed.push({ left: cr.left - box.left, top: cr.top - box.top, right: cr.right - box.left, bottom: cr.bottom - box.top });
         continue;
-      }
-      // 手动微调：个别站的标签按用户指定的方向再挪一点（加在防重叠选出的位置上）；
-      // 只在用户指定的那三个层级（6 级全国图、7 级中景、8 级成都放大图）生效，其他层级不加微调
-      // 挪完的位置仍要在地图框内、且不跟已放好的标签重叠，否则保持原位置不动
-      // 注意：微调是用户按截图指定的小幅度错开，不再用“排成一列”去卡它——否则微调会被 inColumn 拦住、根本贴不上去；但重叠检查要保留，微调不能造出重叠
-      const nudge = nudgeFor(zoom, tip.getContent());
-      if (nudge) {
-        const ndx = chosen.dx + nudge.dx, ndy = chosen.dy + nudge.dy;
-        let nleft, ntop;
-        if (chosen.dir === 'bottom') { nleft = pt.x - w / 2 + ndx; ntop = pt.y + ndy; }
-        else if (chosen.dir === 'top') { nleft = pt.x - w / 2 + ndx; ntop = pt.y + ndy - h; }
-        else if (chosen.dir === 'right') { nleft = pt.x + ndx; ntop = pt.y - h / 2 + ndy; }
-        else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
-        const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
-        const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
-        if (nInside && !overlaps(nr) && nearestRoute((nr.left + nr.right) / 2, (nr.top + nr.bottom) / 2)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
