@@ -157,14 +157,16 @@ body.dark .btn-ghost { background: rgba(255, 255, 255, 0.1); }
 }
 
 /* ---------- 主界面：全屏地图 + 底部 Dock ---------- */
-#main-view { position: relative; height: 100vh; height: 100dvh; overflow: hidden; padding: 0; max-width: none; margin: 0; }
+/* 注意：.view 的 min-height: 100vh 会把高度顶到大视口（Chrome 手机端地址栏收起时的高度），
+   导致地址栏显示时 Dock 被顶出可视区。主界面用 min-height: 100dvh 覆盖它，跟随动态视口。 */
+#main-view { position: relative; height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; overflow: hidden; padding: 0; max-width: none; margin: 0; }
 #map { position: absolute; inset: 0; height: 100%; border-radius: 0; overflow: hidden; z-index: 0; }
 .leaflet-container { font-family: var(--font); }
 .leaflet-control-zoom { border: none !important; box-shadow: var(--glass-shadow) !important; }
 .leaflet-control-zoom a { background: var(--glass-bg) !important; color: var(--text) !important; -webkit-backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%); backdrop-filter: blur(calc(var(--glass-opacity) * 200px)) saturate(180%); }
 
 .map-hint-chip {
-  position: absolute; left: 16px; bottom: 10px;
+  position: absolute; left: 16px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   z-index: 5; padding: 8px 16px; border-radius: 999px; white-space: nowrap;
   font-size: 13px; color: var(--text-soft); max-width: calc(100vw - 32px);
   overflow: hidden; text-overflow: ellipsis; pointer-events: none;
@@ -222,7 +224,7 @@ body.dark .rank-num { background: rgba(255, 255, 255, 0.15); }
 
 /* 底部 Dock（iOS 27 液态玻璃） */
 .dock {
-  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   z-index: 30; display: flex; gap: 2px; padding: 8px;
   border-radius: 999px; max-width: calc(100vw - 24px); overflow-x: auto;
 }
@@ -291,7 +293,7 @@ body.dark .type-btn.active { background: rgba(255, 255, 255, 0.18); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
   background: rgba(20, 20, 30, 0.85); color: #fff; font-size: 14px;
   padding: 12px 20px; border-radius: 999px; z-index: 50;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -299,7 +301,7 @@ body.dark .type-btn.active { background: rgba(255, 255, 255, 0.18); }
 }
 
 @media (max-width: 900px) {
-  .panel { top: auto; right: 0; left: 0; bottom: 92px; width: auto; max-height: 62vh; border-radius: 24px 24px 0 0; }
+  .panel { top: auto; right: 0; left: 0; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); width: auto; max-height: 62vh; border-radius: 24px 24px 0 0; }
   .map-hint-chip { font-size: 12px; }
   .dock-btn { padding: 7px 10px; }
 }
