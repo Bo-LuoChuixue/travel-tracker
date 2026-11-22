@@ -465,13 +465,13 @@
   // 缩得太远时只显示轨迹线，不显示地名。
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
   // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素）：
-  // 都江堰往左挪一点、和青城山平行；犀浦往左下挪一点、幅度小一点。
+  // 都江堰站往左挪一点、和青城山站平行；犀浦站往左下挪一点、幅度小一点。
   // 只在用户截图那个层级（2026-11-22 16:03 那张，全国图，6 级）生效，其他层级不动。
-  // 站名已按用户要求在后台去掉“站”字（存什么显示什么），这里的 key 用去站后的名字。
+  // 站名库和行程库里的名字保持带“站”不动（用户 2026-11-22 16:36），这里的 key 用带站的名字。
   const LABEL_NUDGE_ZOOM = 6;
   const LABEL_NUDGE = {
-    '都江堰': { dx: -20, dy: -6 },
-    '犀浦': { dx: -10, dy: 8 },
+    '都江堰站': { dx: -20, dy: -6 },
+    '犀浦站': { dx: -10, dy: 8 },
   };
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
@@ -559,13 +559,23 @@
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
       // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
-      const candidates = [
-        ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
-        ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
-        ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
-        ['bottom', 0, h + 12], ['top', 0, -h - 12],
-        ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
-      ];
+      // 都江堰站（6 级除外）：用户要求放到上面、贴着自己站——先试正上方近处，不用远处位置，免得跑到青城山那里去
+      const labelNameForPlace = tip.getContent();
+      const preferTop = labelNameForPlace === '都江堰站' && zoom !== LABEL_NUDGE_ZOOM;
+      const candidates = preferTop
+        ? [
+            ['top', 0, -8],
+            ['bottom', 0, 8], ['right', 8, 0], ['left', -8, 0],
+            ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
+            ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
+          ]
+        : [
+            ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
+            ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
+            ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
+            ['bottom', 0, h + 12], ['top', 0, -h - 12],
+            ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
+          ];
       let chosen = null;
       for (const [dir, dx, dy] of candidates) {
         let left, top;
