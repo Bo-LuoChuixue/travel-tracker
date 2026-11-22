@@ -452,27 +452,16 @@ app.post('/api/admin/test-email', authMiddleware, requireAdmin, async (req, res)
 // ---------- 航班查询 API ----------
 // GET /api/flights/lookup?flight=CA1831&date=2026-11-15
 // 只按航班号 + 日期查询（不带时间）。返回该航班当日的全部航段 options（同一航班号一日内可能有多段），
-// 每段含起降机场（IATA 代码、机场名、计划起降时间）；为兼容单段用法，顶层同时带第一段的字段。
+// 每段含起降机场（IATA 代码、机场名）与三组时间：实际、计划、预计；为兼容单段用法，顶层同时带第一段的字段。
 // 先查本地缓存（30 天），没有再调飞常准 CMCP 的 getFlightStatus 工具。
 function normalizeFlightCache(cached) {
   if (!cached) return null;
-  if (Array.isArray(cached.options) && cached.options.length) return cached;
-  // 旧版缓存：单条结果，转成 options 形状
-  if (cached.departure && cached.arrival) {
-    return {
-      flight: cached.flight,
-      flight_date: cached.flight_date,
-      options: [
-        {
-          flight: cached.flight,
-          flight_date: cached.flight_date,
-          airline: cached.airline || '',
-          departure: cached.departure,
-          arrival: cached.arrival,
-        },
-      ],
-    };
+  if (Array.isArray(cached.options) && cached.options.length) {
+    // 旧版缓存没有 actual（实际时间）字段，视为过期，重新查接口拿实际时间
+    if (!cached.options[0].departure || !('actual' in cached.options[0].departure)) return null;
+    return cached;
   }
+  // 旧版缓存：单条结果，没有 actual 字段，重新查接口
   return null;
 }
 app.get('/api/flights/lookup', authMiddleware, async (req, res) => {
@@ -508,6 +497,7 @@ app.get('/api/flights/lookup', authMiddleware, async (req, res) => {
           icao: '',
           scheduled: toIso(f.FlightDeptimePlanDate),
           estimated: toIso(f.FlightDeptimeEstDate),
+          actual: toIso(f.FlightDeptimeDate),
         },
         arrival: {
           airport: f.FlightArrAirport || f.FlightArr || '',
@@ -515,6 +505,7 @@ app.get('/api/flights/lookup', authMiddleware, async (req, res) => {
           icao: '',
           scheduled: toIso(f.FlightArrtimePlanDate),
           estimated: toIso(f.FlightArrtimeEstDate),
+          actual: toIso(f.FlightArrtimeDate),
         },
       }))
       .filter((o) => o.departure.iata && o.arrival.iata);
