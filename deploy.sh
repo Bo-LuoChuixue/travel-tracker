@@ -47,11 +47,16 @@ fi
 
 echo "==> [1/6] 安装 Node.js 20、nginx、certbot..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq curl git ca-certificates nginx python3-certbot-nginx >/dev/null
-if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.'; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
-  apt-get install -y -qq nodejs >/dev/null
+# 东西都已装好就跳过 apt：每次都 apt-get update 是脚本里最耗时的一步
+if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.' || ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  apt-get update -qq
+  apt-get install -y -qq curl git ca-certificates nginx python3-certbot-nginx >/dev/null
+  if ! command -v node >/dev/null 2>&1 || ! node --version | grep -q '^v20\.'; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
+    apt-get install -y -qq nodejs >/dev/null
+  fi
+else
+  echo "    已安装，跳过 apt"
 fi
 echo "    node $(node --version)，npm $(npm --version)"
 
@@ -119,7 +124,15 @@ systemctl is-active -q travel-tracker || { echo "服务启动失败，查看日�
 curl -fsS -o /dev/null http://127.0.0.1:3000/ && echo "    本地 http://127.0.0.1:3000 已通"
 
 echo "==> [6/6] 配置 nginx + 申请 HTTPS 证书..."
-cat > /etc/nginx/sites-enabled/travel-tracker.conf <<EOF
+# 证书还够 30 天以上、且 nginx 配置里已有 HTTPS，就不重写配置、不跑 certbot
+# （每次都跑 certbot 是脚本里另一耗时步骤；证书没到期时它只会说不用续期）
+CERT_FILE="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+KEY_FILE="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+NGINX_CONF="/etc/nginx/sites-enabled/travel-tracker.conf"
+if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ] && openssl x509 -in "$CERT_FILE" -noout -checkend $((30*86400)) >/dev/null 2>&1 && grep -q "listen 443 ssl" "$NGINX_CONF" 2>/dev/null; then
+  echo "    证书还够 30 天以上，nginx 已有 HTTPS 配置，跳过 certbot"
+else
+cat > "$NGINX_CONF" <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -145,6 +158,7 @@ else
   echo "    证书申请失败（常见原因：DNS 还没指向本机、80 端口未放行）"
   echo "    网站仍可通过 http://$DOMAIN/ 访问，修好 DNS/防火墙后运行："
   echo "      sudo certbot --nginx -d $DOMAIN"
+fi
 fi
 
 echo
