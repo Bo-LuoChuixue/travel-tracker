@@ -605,12 +605,16 @@
     else if (code) $(`f-${prefix}`).value = code;
     return false;
   }
+  // 取一段航段的起降时间：实际时间优先，没有实际时间用计划时间，再没有用预计时间
+  function pickFlightTime(seg) {
+    return (seg && (seg.actual || seg.scheduled || seg.estimated)) || '';
+  }
   // 用一段查询结果填表：起降机场、起降时间、航空公司 + 航司 logo
   function fillFlightOption(opt, cached) {
     const depOk = fillAirport('dep', opt.departure.iata, opt.departure.airport);
     const arrOk = fillAirport('arr', opt.arrival.iata, opt.arrival.airport);
-    const depT = isoToLocalInput(opt.departure.scheduled || opt.departure.estimated);
-    const arrT = isoToLocalInput(opt.arrival.scheduled || opt.arrival.estimated);
+    const depT = isoToLocalInput(pickFlightTime(opt.departure));
+    const arrT = isoToLocalInput(pickFlightTime(opt.arrival));
     if (depT) $('f-dep-time').value = depT;
     if (arrT) $('f-arr-time').value = arrT;
     if (opt.airline) $('f-airline').value = opt.airline;
@@ -619,8 +623,9 @@
     const missing = [];
     if (!depOk) missing.push('出发机场不在列表里，保存时自动查坐标');
     if (!arrOk) missing.push('到达机场不在列表里，保存时自动查坐标');
+    const timeSrc = opt.departure.actual || opt.arrival.actual ? '实际' : (opt.departure.scheduled || opt.arrival.scheduled ? '计划' : '预计');
     toast(
-      `已查到 ${opt.flight}（${opt.flight_date}）：${opt.departure.iata || '?'} → ${opt.arrival.iata || '?'}${cached ? '（缓存）' : ''}` +
+      `已查到 ${opt.flight}（${opt.flight_date}）：${opt.departure.iata || '?'} → ${opt.arrival.iata || '?'}（${timeSrc}时间）${cached ? '（缓存）' : ''}` +
         (missing.length ? '；' + missing.join('；') : '')
     );
   }
@@ -634,8 +639,8 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'flight-option';
-      const depT = fmtDate(opt.departure.scheduled || opt.departure.estimated);
-      const arrT = fmtDate(opt.arrival.scheduled || opt.arrival.estimated);
+      const depT = fmtDate(pickFlightTime(opt.departure));
+      const arrT = fmtDate(pickFlightTime(opt.arrival));
       b.innerHTML =
         `<div class="opt-route">${opt.departure.iata} → ${opt.arrival.iata}</div>` +
         `<div class="opt-time">${opt.departure.airport} ${depT} → ${opt.arrival.airport} ${arrT}</div>` +
@@ -745,10 +750,23 @@
     const m = String(flightNumber || '').trim().toUpperCase().match(/^([A-Z0-9]{2})[0-9]/);
     return m ? m[1] : null;
   }
+  // 维基百科 / 维基共享资源的文件页链接（…/wiki/File:xxx.svg）打开是网页、不是图片，
+  // 直接当 <img> 用会显示空白；转成同站的 Special:FilePath 直链，浏览器跟随跳转后能正常显示。
+  // 已保存的旧链接也在显示时自动转换，不用重新保存。
+  function normalizeLogoUrl(url) {
+    const u = String(url || '').trim();
+    const m = u.match(/^https?:\/\/([a-z0-9-]+\.)?(wikipedia\.org|wikimedia\.org)\/wiki\/(?:File|Image):([^#?]+)/i);
+    if (!m) return u;
+    const host = (m[1] || '') + m[2];
+    let name = m[3] || '';
+    try { name = decodeURIComponent(name); } catch (e) { /* 保持原样 */ }
+    name = name.replace(/ /g, '_');
+    return `https://${host}/wiki/Special:FilePath/${encodeURIComponent(name)}`;
+  }
   function airlineLogoUrl(flightNumber) {
     const code = airlineCodeOf(flightNumber);
     if (!code) return null;
-    if (customLogos[code]) return customLogos[code];
+    if (customLogos[code]) return normalizeLogoUrl(customLogos[code]);
     return `https://images.kiwi.com/airlines/64x64/${code}.png`;
   }
   function kiwiLogoUrl(code) {
@@ -799,9 +817,15 @@
       return;
     }
     img.style.visibility = 'visible';
-    img.onerror = () => { img.style.visibility = 'hidden'; };
-    img.onload = () => { img.style.visibility = 'visible'; };
-    img.src = url;
+    img.onerror = () => {
+      img.style.visibility = 'hidden';
+      $('logo-modal-error').textContent = '这张图片打不开：请确认贴的是图片直链（以 .png / .jpg / .svg 等结尾），而不是网页链接。';
+    };
+    img.onload = () => {
+      img.style.visibility = 'visible';
+      if ($('logo-modal-error').textContent.startsWith('这张图片打不开')) $('logo-modal-error').textContent = '';
+    };
+    img.src = normalizeLogoUrl(url);
   }
   // 本地上传：选图片后自动缩小到 128px 以内，转成 data URL 填进地址框并预览。
   // 支持 PNG、JPG、GIF、WebP、SVG、BMP、ICO 等常见图片格式。
@@ -846,7 +870,7 @@
   }
   async function saveLogoOverride() {
     if (!logoEditCode) return;
-    const url = $('logo-url').value.trim();
+    const url = normalizeLogoUrl($('logo-url').value.trim());
     const res = await fetch('/api/airline-logos', {
       method: 'POST',
       headers: authHeaders(),
