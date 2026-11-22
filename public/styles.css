@@ -81,6 +81,19 @@ body.dark .tab.active { background: rgba(255, 255, 255, 0.18); }
   border-radius: 14px; padding: 12px 14px; outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
+/* 地图源选择框：和底下输入框同一套玻璃样式（原生 select 默认是白底，很突兀） */
+.field select {
+  width: 100%; font: inherit; color: var(--text);
+  background-color: var(--input-bg); border: 1px solid var(--input-border);
+  border-radius: 14px; padding: 12px 38px 12px 14px; outline: none;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field input:focus, .field select:focus { border-color: #2f7bff; box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.18); }
+/* 下拉列表用系统原生弹出层：白底深字，保证在深色模式下也看得清 */
+.field select option { color: #222; background: #fff; }
 /* 航空公司行：输入框 + 航司小 logo（24px，识别到航司后显示） */
 .airline-row { display: flex; align-items: center; gap: 10px; }
 .airline-row input { flex: 1; min-width: 0; }
