@@ -525,9 +525,8 @@
 
   // ---------- 地名标签防重叠 ----------
   // 标签默认放在端点正下方；两个端点靠得近时 pill 会叠在一起（如都江堰站和青城山）。
-  // 画完后检测重叠：按顺序保留先画的标签，后面的只在站旁边近处试上 / 下 / 左 / 右 / 斜角贴边，
-  // 放到第一个不重叠、且在地图框内的位置；近处实在没空位就藏起标签，不推远、不排成列，
-  // 这样每个看得见的标签都贴着自己的站，一眼就能对上。
+  // 画完后检测重叠：按顺序保留先画的标签，后面的依次尝试上 / 左 / 右 / 斜角 / 远处等空位，
+  // 放到第一个不重叠、且在地图框内的位置；实在没空位就保持默认正下方。
   // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend（缩放结束也会触发）
   // 和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
   function deoverlapLabels() {
@@ -550,12 +549,13 @@
       const pt = map.latLngToContainerPoint(marker.getLatLng());
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
-      // 候选位置（方向 + 偏移）：只试站旁边的近处（正下 / 正上 / 正左 / 正右 / 斜角贴边），
-      // 标签始终贴着自己的站，不挪远、不排成列；近处没有不重叠的空位就藏起标签
+      // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
       const candidates = [
         ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
         ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
         ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
+        ['bottom', 0, h + 12], ['top', 0, -h - 12],
+        ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
       ];
       let chosen = null;
       for (const [dir, dx, dy] of candidates) {
@@ -569,8 +569,9 @@
         if (inside && !overlaps(r)) { chosen = { dir, dx, dy, rect: r }; break; }
       }
       if (!chosen) {
-        // 站旁边没有不重叠的空位：藏起这个标签，不把它推远排成列（藏起来的不占位置）
-        el.style.display = 'none';
+        // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
+        const cr = el.getBoundingClientRect();
+        placed.push({ left: cr.left - box.left, top: cr.top - box.top, right: cr.right - box.left, bottom: cr.bottom - box.top });
         continue;
       }
       placed.push(chosen.rect);
