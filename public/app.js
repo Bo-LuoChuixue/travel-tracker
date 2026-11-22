@@ -456,7 +456,7 @@
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
   // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素），只在指定的那两个层级生效，其他层级不动。
   // 6 级（全国图）：都江堰往左挪一点、和青城山平行；犀浦往左下挪一点、幅度小一点。
-  // 8 级（成都放大图）：青城山往左挪（用户 17:42 截图红箭头指左）。
+  // 8 级（成都放大图）：青城山往左挪（用户 17:42 截图红箭头指左，箭头尖在标签当前位置左上方约 60/20 像素处）。
   // 行程库里的站名已是用户自己改成不带“站”的（都江堰/犀浦/青城山），这里的 key 用不带站的名字。
   const LABEL_NUDGE_BY_ZOOM = {
     6: {
@@ -464,7 +464,7 @@
       '犀浦': { dx: -10, dy: 8 },
     },
     8: {
-      '青城山': { dx: -40, dy: 0 },
+      '青城山': { dx: -60, dy: -20 },
     },
   };
   const nudgeFor = (zoom, name) => (LABEL_NUDGE_BY_ZOOM[zoom] || {})[name];
@@ -602,8 +602,8 @@
       }
       // 手动微调：个别站的标签按用户指定的方向再挪一点（加在防重叠选出的位置上）；
       // 只在用户指定的那两个层级（6 级全国图、8 级成都放大图）生效，其他层级不加微调
-      // 挪完的位置仍要在地图框内、且不跟已放好的标签重叠，否则保持原位置不动
-      // 注意：微调是用户按截图指定的，不再用“排成一列”去卡它——否则 6 级的微调会被 inColumn 拦住、根本贴不上去
+      // 挪完的位置仍要在地图框内，否则保持原位置不动
+      // 注意：微调是用户按截图箭头指定的，直接贴到箭头位置——不再用“重叠 / 排成一列”去卡它，否则箭头指的地方贴不上去
       const nudge = nudgeFor(zoom, tip.getContent());
       if (nudge) {
         const ndx = chosen.dx + nudge.dx, ndy = chosen.dy + nudge.dy;
@@ -614,7 +614,7 @@
         else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
         const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
         const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
-        if (nInside && !overlaps(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
+        if (nInside) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
