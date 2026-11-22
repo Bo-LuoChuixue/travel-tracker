@@ -463,6 +463,8 @@
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
     labelMarkers = [];
+    // 同一个站是多条行程的端点时只标一次（比如犀浦站同时是两条线的终点）
+    const seenEndpoints = new Set();
     const bounds = [];
     // 同一对地点 + 同类型 的多条线路：按出现顺序依次增大弧度，避免完全重叠
     const routeCount = new Map();
@@ -485,6 +487,9 @@
       // （如“合肥新桥国际机场 (HFE)”）在显示时都去掉末尾的“ (CODE)”，只留全称。
       const labelName = (name) => String(name || '').replace(/\s*\([A-Za-z0-9]{2,4}\)\s*$/, '');
       const labelMarker = (latlon, name) => {
+        const key = latlon.join(',');
+        if (seenEndpoints.has(key)) return;
+        seenEndpoints.add(key);
         const m = L.marker(latlon, {
           icon: L.divIcon({ className: 'place-label-marker', html: '', iconSize: [0, 0] }),
           interactive: false,
