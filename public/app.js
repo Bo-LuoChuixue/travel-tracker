@@ -559,16 +559,15 @@
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
       // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
-      // 都江堰（6 级除外）：用户要求放到上面、往左一点、贴着自己站，和青城山并排不叠成一列——先试左上方近处，不用远处位置
+      // 都江堰（6 级除外）：用户要求放到上面、贴着自己站——先试正上方居中近处，不用远处位置；左上偏得太远用户说不行，改回正上方
       const labelNameForPlace = tip.getContent();
       const preferTop = labelNameForPlace === '都江堰' && zoom !== LABEL_NUDGE_ZOOM;
       const candidates = preferTop
         ? [
-            ['top', -w / 2 - 4, -8],
             ['top', 0, -8],
             ['bottom', 0, 8], ['right', 8, 0], ['left', -8, 0],
             ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
-            ['top', w / 2 + 4, -8],
+            ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
           ]
         : [
             ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
