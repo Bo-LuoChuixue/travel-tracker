@@ -105,6 +105,12 @@
 <section id="main-view" class="view hidden">
   <div id="map"></div>
   <div id="map-hint" class="map-hint-chip glass">还没有行程，点击下方「添加」记录第一条轨迹。</div>
+  <!-- 地图视图切换：三套地图（全部 / 只看飞行 / 只看铁路）点一下就换，样式跟行程列表的筛选按钮一样是液态玻璃 -->
+  <div id="map-view-switch" class="map-view-switch glass" role="group" aria-label="地图视图">
+    <button id="map-view-all" class="type-btn active" type="button">全部</button>
+    <button id="map-view-flight" class="type-btn" type="button">✈️ 飞行</button>
+    <button id="map-view-train" class="type-btn" type="button">🚄 火车</button>
+  </div>
 
   <!-- 添加行程面板 -->
   <div id="panel-add" class="panel glass hidden">

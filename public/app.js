@@ -458,12 +458,14 @@
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
     labelMarkers = [];
+    // 地图视图过滤：只画当前视图的行程（全部 / 只有飞行 / 只有铁路），标签也只画这些行程的端点
+    const visibleTrips = trips.filter((t) => mapView === 'all' || t.type === mapView);
     // 同一个站是多条行程的端点时只标一次（比如犀浦站同时是两条线的终点）
     const seenEndpoints = new Set();
     const bounds = [];
     // 同一对地点 + 同类型 的多条线路：按出现顺序依次增大弧度，避免完全重叠
     const routeCount = new Map();
-    trips.forEach((t) => {
+    visibleTrips.forEach((t) => {
       if (t.dep_lat == null || t.dep_lon == null || t.arr_lat == null || t.arr_lon == null) return;
       // 库里存的是 WGS-84，画线时按当前地图源换算（高德 → GCJ-02，OSM → 原样）
       const a = toMapCoords(t.dep_lat, t.dep_lon);
@@ -503,15 +505,21 @@
       }
       bounds.push(a, b);
     });
-    const flightCount = trips.filter((t) => t.type === 'flight').length;
-    const trainCount = trips.filter((t) => t.type === 'train').length;
+    const flightCount = visibleTrips.filter((t) => t.type === 'flight').length;
+    const trainCount = visibleTrips.filter((t) => t.type === 'train').length;
     // 提示里带颜色示意：一小段航线色和一小段铁路线色，与地图上的线同色（深灰底图上是浅蓝/白）
+    // 只显示当前视图有的类型：飞行视图只报航线数，铁路视图只报铁路线数，全部视图两个都报
     const cols = routeColors();
     map.getContainer().classList.toggle('dark-base', isDarkBase());
+    const hintParts = [];
+    if (mapView !== 'train' && flightCount) hintParts.push(`${flightCount} 条航线<span class="legend-line" style="background:${cols.flight}"></span>`);
+    if (mapView !== 'flight' && trainCount) hintParts.push(`${trainCount} 条铁路线<span class="legend-line" style="background:${cols.train}"></span>`);
     $('map-hint').innerHTML =
       trips.length === 0
         ? '还没有行程，点击下方「添加行程」记录第一条轨迹。'
-        : `已加载 ${flightCount} 条航线<span class="legend-line" style="background:${cols.flight}"></span>，${trainCount} 条铁路线<span class="legend-line" style="background:${cols.train}"></span>。`;
+        : visibleTrips.length === 0
+          ? '这个视图下还没有行程。'
+          : `已加载 ${hintParts.join('，')}。`;
     if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
     requestAnimationFrame(deoverlapLabels);
   }
@@ -579,6 +587,17 @@
   }
 
   // ---------- 行程列表 ----------
+  // 地图视图切换（2026-11-22 用户要求：三套地图点一下就换）：
+  // 'all' 两种线路都有，'flight' 只有飞行线路，'train' 只有铁路线路；选中的视图记在本地，下次打开还是它。
+  const MAP_VIEW_KEY = 'tt_map_view';
+  const savedMapView = localStorage.getItem(MAP_VIEW_KEY);
+  let mapView = ['all', 'flight', 'train'].includes(savedMapView) ? savedMapView : 'all';
+  function setMapView(v) {
+    mapView = v;
+    localStorage.setItem(MAP_VIEW_KEY, v);
+    ['all', 'flight', 'train'].forEach((k) => $('map-view-' + k).classList.toggle('active', k === v));
+    drawRoutes(true); // 切视图时重新按当前视图范围适配地图（铁路只看成都那块，飞行/全部看全国）
+  }
   // 列表按类型分开显示（全部 / 飞行 / 火车），与添加行程的切换按钮同款；
   // 飞行条目前面显示对应航司的小 logo（Kiwi），拿不到 logo 时回退到 ✈️。
   let listFilter = 'all'; // 'all' | 'flight' | 'train'
@@ -705,6 +724,12 @@
   $('list-filter-all').addEventListener('click', () => setListFilter('all'));
   $('list-filter-flight').addEventListener('click', () => setListFilter('flight'));
   $('list-filter-train').addEventListener('click', () => setListFilter('train'));
+  // 地图视图切换按钮：点一下就换三套地图（全部 / 只有飞行 / 只有铁路）
+  $('map-view-all').addEventListener('click', () => setMapView('all'));
+  $('map-view-flight').addEventListener('click', () => setMapView('flight'));
+  $('map-view-train').addEventListener('click', () => setMapView('train'));
+  // 打开时按记住的视图亮起对应按钮（默认全部）
+  ['all', 'flight', 'train'].forEach((k) => $('map-view-' + k).classList.toggle('active', k === mapView));
   $('stats-type-flight').addEventListener('click', () => setStatsType('flight'));
   $('stats-type-train').addEventListener('click', () => setStatsType('train'));
 

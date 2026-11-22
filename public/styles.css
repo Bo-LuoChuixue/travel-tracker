@@ -204,6 +204,11 @@ body.dark .btn-ghost { background: rgba(255, 255, 255, 0.1); }
 .legend-line { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin: 0 2px; }
 .legend-flight { background: #2f7bff; }
 .legend-train { background: #000000; }
+/* 地图视图切换（全部 / 飞行 / 火车）：左上角一排液态玻璃小药丸，点一下就换视图，不用刷新 */
+.map-view-switch {
+  position: absolute; left: 16px; top: 16px; z-index: 5;
+  display: flex; gap: 2px; padding: 4px; border-radius: 999px;
+}
 /* 悬浮面板 */
 .panel {
   position: absolute; z-index: 20; top: 16px; right: 16px; bottom: 100px;
