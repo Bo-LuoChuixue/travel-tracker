@@ -454,15 +454,20 @@
   // 机场离得远：5 级（全国）还分得清，4 级（亚洲）合肥/上海才靠得很近 → 5 级以下藏。
   // 缩得太远时只显示轨迹线，不显示地名。
   const LABEL_MIN_ZOOM = { train: 6, flight: 5 };
-  // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素）：
-  // 都江堰往左挪一点、和青城山平行；犀浦往左下挪一点、幅度小一点。
-  // 只在用户截图那个层级（2026-11-22 16:03 那张，全国图，6 级）生效，其他层级不动。
+  // 个别标签的手动微调（2026-11-22 用户按截图指定，单位像素），只在指定的那两个层级生效，其他层级不动。
+  // 6 级（全国图）：都江堰往左挪一点、和青城山平行；犀浦往左下挪一点、幅度小一点。
+  // 8 级（成都放大图）：青城山往左挪（用户 17:42 截图红箭头指左）。
   // 行程库里的站名已是用户自己改成不带“站”的（都江堰/犀浦/青城山），这里的 key 用不带站的名字。
-  const LABEL_NUDGE_ZOOM = 6;
-  const LABEL_NUDGE = {
-    '都江堰': { dx: -20, dy: -6 },
-    '犀浦': { dx: -10, dy: 8 },
+  const LABEL_NUDGE_BY_ZOOM = {
+    6: {
+      '都江堰': { dx: -20, dy: -6 },
+      '犀浦': { dx: -10, dy: 8 },
+    },
+    8: {
+      '青城山': { dx: -40, dy: 0 },
+    },
   };
+  const nudgeFor = (zoom, name) => (LABEL_NUDGE_BY_ZOOM[zoom] || {})[name];
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
@@ -561,9 +566,9 @@
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
       // 候选位置（方向 + 偏移）：先试正下方（现状），再试上 / 左 / 右 / 斜角 / 远处
-      // 都江堰（6 级除外）：用户要求放到上面、贴着自己站——先试正上方居中近处，不用远处位置；左上偏得太远用户说不行，改回正上方
+      // 都江堰（有手动微调的层级除外）：用户要求放到上面、贴着自己站——先试正上方居中近处，不用远处位置；左上偏得太远用户说不行，改回正上方
       const labelNameForPlace = tip.getContent();
-      const preferTop = labelNameForPlace === '都江堰' && zoom !== LABEL_NUDGE_ZOOM;
+      const preferTop = labelNameForPlace === '都江堰' && !nudgeFor(zoom, '都江堰');
       const candidates = preferTop
         ? [
             ['top', 0, -8],
@@ -596,9 +601,10 @@
         continue;
       }
       // 手动微调：个别站的标签按用户指定的方向再挪一点（加在防重叠选出的位置上）；
-      // 只在截图那个层级生效，其他层级不加微调
+      // 只在用户指定的那两个层级（6 级全国图、8 级成都放大图）生效，其他层级不加微调
       // 挪完的位置仍要在地图框内、且不跟已放好的标签重叠，否则保持原位置不动
-      const nudge = zoom === LABEL_NUDGE_ZOOM ? LABEL_NUDGE[tip.getContent()] : undefined;
+      // 注意：微调是用户按截图指定的，不再用“排成一列”去卡它——否则 6 级的微调会被 inColumn 拦住、根本贴不上去
+      const nudge = nudgeFor(zoom, tip.getContent());
       if (nudge) {
         const ndx = chosen.dx + nudge.dx, ndy = chosen.dy + nudge.dy;
         let nleft, ntop;
@@ -608,7 +614,7 @@
         else { nleft = pt.x + ndx - w; ntop = pt.y - h / 2 + ndy; }
         const nr = { left: nleft, top: ntop, right: nleft + w, bottom: ntop + h };
         const nInside = nr.left >= 2 && nr.top >= 2 && nr.right <= box.width - 2 && nr.bottom <= box.height - 2;
-        if (nInside && !overlaps(nr) && !inColumn(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
+        if (nInside && !overlaps(nr)) { chosen = { dir: chosen.dir, dx: ndx, dy: ndy, rect: nr }; }
       }
       placed.push(chosen.rect);
       const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
