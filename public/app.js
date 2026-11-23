@@ -13,6 +13,7 @@
   let stations = [];
   let map = null;
   let routeLayer = null;
+  let leaderLayer = null; // 地名标签的引线层（标签挪远时连回端点的细线）
   let tripType = 'flight';
   let editingId = null;
 
@@ -348,6 +349,7 @@
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     applyMapSource(getMapSource());
     routeLayer = L.layerGroup().addTo(map);
+    leaderLayer = L.layerGroup().addTo(map);
     map.on('click', () => {
       showPanel(null);
     });
@@ -457,6 +459,7 @@
   function drawRoutes(fit = true) {
     if (!map || !routeLayer) return;
     routeLayer.clearLayers();
+    if (leaderLayer) leaderLayer.clearLayers();
     labelMarkers = [];
     // 地图视图过滤：只画当前视图的行程（全部 / 只有飞行 / 只有铁路），标签也只画这些行程的端点
     const visibleTrips = trips.filter((t) => mapView === 'all' || t.type === mapView);
@@ -525,64 +528,126 @@
   }
 
   // ---------- 地名标签防重叠 ----------
-  // 每条线路的起点/终点各显示一个对应的站名，站名贴在自己端点附近。
-  // 唯一要求：站名之间不能重叠。做法很简单——按端点顺序依次放标签，
-  // 每个标签先试正下方，再试上 / 左 / 右 / 斜角 / 远处，放到第一个不重叠、且在地图框内的位置；
-  // 实在没空位就保持默认正下方。不做成列检测、不做按层级微调、不做离线路距离判断。
-  // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend（缩放结束也会触发）
-  // 和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
+  // 目标：站名一个都不能少，也一个都不能叠。做法是“往外扇形散开 + 挪远了就画引线”。
+  // 每个标签先算一个“往外”的方向（远离附近其他站点的方向），优先往那个方向放；
+  // 近处放不下就往远处挪（8 个方向 × 近/中/远三档），挪得太远（标签中心离端点 > 45px）
+  // 就画一条细引线连回端点，这样哪怕标签飘得远，也一眼能看出是哪个站。
+  // 标签按“周围越挤越先放”的顺序排，避免先来的占了好位置、后来的没地方去。
+  // 平移不改变标签之间的相对位置，只有缩放 / 尺寸变化会改变重叠情况，所以只在 moveend
+  // （缩放结束也会触发）和 resize 后重算；换地图源、切底图都会重画路线，画完也会重算。
   function deoverlapLabels() {
     if (!map || !labelMarkers.length) return;
+    if (leaderLayer) leaderLayer.clearLayers();
     const box = map.getContainer().getBoundingClientRect();
     const placed = [];
     const GAP = 4;
     const overlaps = (r) => placed.some((p) => r.left < p.right + GAP && r.right > p.left - GAP && r.top < p.bottom + GAP && r.bottom > p.top - GAP);
     const zoom = map.getZoom();
+    // 收集所有可见标签（藏起来的不参与）
+    const items = [];
     for (const marker of labelMarkers) {
       const tip = marker.getTooltip && marker.getTooltip();
       if (!tip) continue;
       const el = tip.getElement();
       if (!el) continue;
-      // 按类型分级显示：缩得太远时藏起地名、只留轨迹线（火车站 6 级以下藏，机场 5 级以下藏）；
-      // 藏起来的标签不参与防重叠计算，不占位置
       const minZoom = LABEL_MIN_ZOOM[marker._labelType] ?? LABEL_MIN_ZOOM.flight;
       if (zoom < minZoom) { el.style.display = 'none'; continue; }
       el.style.display = '';
       const pt = map.latLngToContainerPoint(marker.getLatLng());
       const w = el.offsetWidth, h = el.offsetHeight;
       if (!w || !h) continue;
-      // 候选位置（方向 + 偏移）：先试正下方，再试上 / 左 / 右 / 斜角 / 远处
-      const candidates = [
-        ['bottom', 0, 8], ['top', 0, -8], ['right', 8, 0], ['left', -8, 0],
-        ['bottom', w / 2 + 4, 8], ['bottom', -w / 2 - 4, 8],
-        ['top', w / 2 + 4, -8], ['top', -w / 2 - 4, -8],
-        ['bottom', 0, h + 12], ['top', 0, -h - 12],
-        ['right', 8, -h], ['right', 8, h], ['left', -8, -h], ['left', -8, h],
+      items.push({ marker, tip, el, pt, w, h });
+    }
+    // 每个标签算“往外”的方向：看周围邻居都在哪个方向，往邻居最少的那个空档去。
+    // 做法是把邻居的方向角排一圈，找最大的那个空档，往空档正中间放；
+    // 孤零零的站没有邻居，默认往下放。周围越挤的标签越先放，先占好位置。
+    const RADIUS = 140;
+    for (const it of items) {
+      const angles = [];
+      for (const o of items) {
+        if (o === it) continue;
+        const dx = o.pt.x - it.pt.x, dy = o.pt.y - it.pt.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.01 && d < RADIUS) angles.push(Math.atan2(dy, dx));
+      }
+      it.neighbors = angles.length;
+      if (!angles.length) { it.outAngle = Math.PI / 2; continue; }
+      angles.sort((a, b) => a - b);
+      // 找最大的空档（相邻两个邻居方向之间的夹角，绕一圈）
+      let bestGap = -1, bestMid = Math.PI / 2;
+      for (let i = 0; i < angles.length; i++) {
+        const a0 = angles[i];
+        const a1 = angles[(i + 1) % angles.length] + (i + 1 === angles.length ? Math.PI * 2 : 0);
+        const gap = a1 - a0;
+        if (gap > bestGap) { bestGap = gap; bestMid = a0 + gap / 2; }
+      }
+      it.outAngle = bestMid;
+    }
+    items.sort((a, b) => b.neighbors - a.neighbors);
+    const angDiff = (a, b) => {
+      let d = Math.abs(a - b) % (Math.PI * 2);
+      return d > Math.PI ? Math.PI * 2 - d : d;
+    };
+    // 8 个方向的候选（方向 + 偏移），gap 是标签最近的边离端点的距离；
+    // 角度按屏幕坐标：0=东，PI/2=南（y 向下），PI=西，-PI/2=北。
+    const dirCandidates = (w, h, gap) => {
+      const hw = w / 2;
+      return [
+        { angle: 0, dir: 'right', dx: gap, dy: 0 },
+        { angle: Math.PI / 4, dir: 'bottom', dx: hw + gap, dy: gap },
+        { angle: Math.PI / 2, dir: 'bottom', dx: 0, dy: gap },
+        { angle: 3 * Math.PI / 4, dir: 'bottom', dx: -hw - gap, dy: gap },
+        { angle: Math.PI, dir: 'left', dx: -gap, dy: 0 },
+        { angle: -3 * Math.PI / 4, dir: 'top', dx: -hw - gap, dy: -gap },
+        { angle: -Math.PI / 2, dir: 'top', dx: 0, dy: -gap },
+        { angle: -Math.PI / 4, dir: 'top', dx: hw + gap, dy: -gap },
       ];
+    };
+    const rectOf = (pt, w, h, dir, dx, dy) => {
+      let left, top;
+      if (dir === 'bottom') { left = pt.x - w / 2 + dx; top = pt.y + dy; }
+      else if (dir === 'top') { left = pt.x - w / 2 + dx; top = pt.y + dy - h; }
+      else if (dir === 'right') { left = pt.x + dx; top = pt.y - h / 2 + dy; }
+      else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
+      return { left, top, right: left + w, bottom: top + h };
+    };
+    for (const it of items) {
+      const { marker, tip, el, pt, w, h } = it;
+      const maxSide = Math.max(w, h);
+      const gaps = [8, 8 + maxSide * 0.6, 8 + maxSide * 1.4];
       let chosen = null;
-      for (const [dir, dx, dy] of candidates) {
-        let left, top;
-        if (dir === 'bottom') { left = pt.x - w / 2 + dx; top = pt.y + dy; }
-        else if (dir === 'top') { left = pt.x - w / 2 + dx; top = pt.y + dy - h; }
-        else if (dir === 'right') { left = pt.x + dx; top = pt.y - h / 2 + dy; }
-        else { left = pt.x + dx - w; top = pt.y - h / 2 + dy; }
-        const r = { left, top, right: left + w, bottom: top + h };
-        const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
-        if (inside && !overlaps(r)) { chosen = { dir, dx, dy, rect: r }; break; }
+      outer: for (const gap of gaps) {
+        const cands = dirCandidates(w, h, gap)
+          .sort((a, b) => angDiff(a.angle, it.outAngle) - angDiff(b.angle, it.outAngle));
+        for (const c of cands) {
+          const r = rectOf(pt, w, h, c.dir, c.dx, c.dy);
+          const inside = r.left >= 2 && r.top >= 2 && r.right <= box.width - 2 && r.bottom <= box.height - 2;
+          if (inside && !overlaps(r)) { chosen = { dir: c.dir, dx: c.dx, dy: c.dy, rect: r }; break outer; }
+        }
       }
       if (!chosen) {
-        // 实在没空位：保持现状，把当前实际位置记下来，避免后面的标签再往这儿挤
         const cr = el.getBoundingClientRect();
         placed.push({ left: cr.left - box.left, top: cr.top - box.top, right: cr.right - box.left, bottom: cr.bottom - box.top });
         continue;
       }
       placed.push(chosen.rect);
-      const placeKey = chosen.dir + ':' + chosen.dx + ',' + chosen.dy;
-      if (marker._labelPlace === placeKey) continue;
-      marker._labelPlace = placeKey;
-      const name = tip.getContent();
-      marker.unbindTooltip();
-      marker.bindTooltip(name, { permanent: true, direction: chosen.dir, offset: [chosen.dx, chosen.dy], className: 'place-label-tip' });
+      const placeKey = chosen.dir + ':' + chosen.dx.toFixed(1) + ',' + chosen.dy.toFixed(1);
+      if (marker._labelPlace !== placeKey) {
+        marker._labelPlace = placeKey;
+        const name = tip.getContent();
+        marker.unbindTooltip();
+        marker.bindTooltip(name, { permanent: true, direction: chosen.dir, offset: [chosen.dx, chosen.dy], className: 'place-label-tip' });
+      }
+      // 标签中心离端点太远时画引线：从端点连到标签中心，颜色跟线路走，细而淡
+      const cx = (chosen.rect.left + chosen.rect.right) / 2;
+      const cy = (chosen.rect.top + chosen.rect.bottom) / 2;
+      const distPx = Math.hypot(cx - pt.x, cy - pt.y);
+      if (distPx > 45 && leaderLayer) {
+        const cols = routeColors();
+        const color = marker._labelType === 'flight' ? cols.flight : cols.train;
+        const labelLatLng = map.containerPointToLatLng(L.point(cx, cy));
+        L.polyline([marker.getLatLng(), labelLatLng], { color, weight: 1, opacity: 0.55 }).addTo(leaderLayer);
+      }
     }
   }
 
